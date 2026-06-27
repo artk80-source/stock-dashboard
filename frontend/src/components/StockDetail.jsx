@@ -40,6 +40,13 @@ const METRIC_TOOLTIPS = {
   ytd: "Percent change in price since the start of the year. Example: +4.42% means the stock has gained 4.42% year-to-date.",
 };
 
+const LabelWithTooltip = ({ label, tooltip }) => (
+  <span className="label-tooltip">
+    {label}
+    <span className="tooltip-box">{tooltip}</span>
+  </span>
+);
+
 const StockDetail = ({ symbol, onClose }) => {
   const [period, setPeriod] = useState('5D');
   const [chartData, setChartData] = useState(null);
@@ -275,31 +282,31 @@ const StockDetail = ({ symbol, onClose }) => {
                   <table className="metrics-table">
                     <tbody>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.price}>Price</td>
+                        <td className="label"><LabelWithTooltip label="Price" tooltip={METRIC_TOOLTIPS.price} /></td>
                         <td className="value bold">${dayMetrics?.price?.toFixed(2)}</td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.open}>Open</td>
+                        <td className="label"><LabelWithTooltip label="Open" tooltip={METRIC_TOOLTIPS.open} /></td>
                         <td className="value">${dayMetrics?.open?.toFixed(2)}</td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.dayHL}>Day H/L</td>
+                        <td className="label"><LabelWithTooltip label="Day H/L" tooltip={METRIC_TOOLTIPS.dayHL} /></td>
                         <td className="value">
                           ${dayMetrics?.day_high?.toFixed(0)} / ${dayMetrics?.day_low?.toFixed(0)}
                         </td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.prevClose}>Prev close</td>
+                        <td className="label"><LabelWithTooltip label="Prev close" tooltip={METRIC_TOOLTIPS.prevClose} /></td>
                         <td className="value">${dayMetrics?.previous_close?.toFixed(2)}</td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.intraday}>Intraday %</td>
+                        <td className="label"><LabelWithTooltip label="Intraday %" tooltip={METRIC_TOOLTIPS.intraday} /></td>
                         <td className={`value bold ${dayMetrics?.change_percent >= 0 ? 'up' : 'down'}`}>
                           {dayMetrics?.change_percent >= 0 ? '+' : ''}{dayMetrics?.change_percent?.toFixed(2)}%
                         </td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.volAvg}>Vol / avg</td>
+                        <td className="label"><LabelWithTooltip label="Vol / avg" tooltip={METRIC_TOOLTIPS.volAvg} /></td>
                         <td className="value">
                           {(dayMetrics?.volume / 1000000)?.toFixed(0)}M / {(dayMetrics?.avg_volume / 1000000)?.toFixed(0)}M
                         </td>
@@ -319,31 +326,31 @@ const StockDetail = ({ symbol, onClose }) => {
                   <table className="metrics-table">
                     <tbody>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.pe}>P/E ratio</td>
+                        <td className="label"><LabelWithTooltip label="P/E ratio" tooltip={METRIC_TOOLTIPS.pe} /></td>
                         <td className="value">{longTermMetrics?.pe_ratio?.toFixed(1)}</td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.marketCap}>Market cap</td>
+                        <td className="label"><LabelWithTooltip label="Market cap" tooltip={METRIC_TOOLTIPS.marketCap} /></td>
                         <td className="value">${(longTermMetrics?.market_cap / 1e12)?.toFixed(2)}T</td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.range52w}>52w range</td>
+                        <td className="label"><LabelWithTooltip label="52w range" tooltip={METRIC_TOOLTIPS.range52w} /></td>
                         <td className="value">
                           ${longTermMetrics?.fifty_two_week_low?.toFixed(0)} – ${longTermMetrics?.fifty_two_week_high?.toFixed(0)}
                         </td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.divYield}>Div yield</td>
+                        <td className="label"><LabelWithTooltip label="Div yield" tooltip={METRIC_TOOLTIPS.divYield} /></td>
                         <td className="value">{longTermMetrics?.dividend_yield?.toFixed(2)}%</td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.analystTarget}>Analyst target</td>
+                        <td className="label"><LabelWithTooltip label="Analyst target" tooltip={METRIC_TOOLTIPS.analystTarget} /></td>
                         <td className={`value ${longTermMetrics?.analyst_target >= dayMetrics?.price ? 'up' : 'down'}`}>
                           ${longTermMetrics?.analyst_target?.toFixed(0)}
                         </td>
                       </tr>
                       <tr>
-                        <td className="label" title={METRIC_TOOLTIPS.ytd}>YTD return</td>
+                        <td className="label"><LabelWithTooltip label="YTD return" tooltip={METRIC_TOOLTIPS.ytd} /></td>
                         <td className={`value bold ${longTermMetrics?.ytd_return >= 0 ? 'up' : 'down'}`}>
                           {longTermMetrics?.ytd_return >= 0 ? '+' : ''}{longTermMetrics?.ytd_return?.toFixed(1)}%
                         </td>
