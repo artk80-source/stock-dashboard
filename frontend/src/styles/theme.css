@@ -733,6 +733,61 @@ p {
   font-weight: var(--font-weight-semibold);
 }
 
+/* === Dashboard Grid === */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--space-lg);
+}
+
+.dashboard-card {
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: var(--space-lg);
+}
+
+.dashboard-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* === Top Nav Tabs === */
+.nav-tabs {
+  display: flex;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-2xl);
+  background: var(--bg-surface);
+  padding: 4px;
+  border-radius: var(--radius-md);
+  width: fit-content;
+}
+
+.nav-tab {
+  background: transparent;
+  font-size: var(--text-sm);
+  font-weight: var(--font-weight-semibold);
+  padding: 8px 18px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  color: var(--text-secondary);
+  transition: all var(--transition-fast);
+  border: none;
+  font-family: inherit;
+}
+
+.nav-tab:hover {
+  color: var(--text-primary);
+}
+
+.nav-tab.active {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
+}
+
 /* === Provider Status Badge === */
 .provider-status-badge {
   position: fixed;

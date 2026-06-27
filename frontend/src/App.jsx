@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
+import Dashboard from './components/Dashboard';
 import CatalystFeed from './components/CatalystFeed';
 import StockDetail from './components/StockDetail';
 import ProviderStatusBadge from './components/ProviderStatusBadge';
@@ -12,6 +13,7 @@ function App() {
   const [healthStatus, setHealthStatus] = useState('loading');
   const [selectedStock, setSelectedStock] = useState(null);
   const [appReady, setAppReady] = useState(false);
+  const [activeTab, setActiveTab] = useState('dashboard');
 
   // Health check on app startup
   useEffect(() => {
@@ -81,15 +83,34 @@ function App() {
   }
 
   return (
-    <div className="container">
+    <div className="container" style={{ maxWidth: activeTab === 'dashboard' && !selectedStock ? '1200px' : '800px' }}>
       {selectedStock ? (
         <StockDetail symbol={selectedStock} onClose={() => setSelectedStock(null)} />
       ) : (
         <>
-          <CatalystFeed
-            onViewDetails={(symbol) => setSelectedStock(symbol)}
-            onTrackStock={(symbol) => console.log('Track:', symbol)}
-          />
+          <div className="nav-tabs">
+            <span
+              className={`nav-tab ${activeTab === 'dashboard' ? 'active' : ''}`}
+              onClick={() => setActiveTab('dashboard')}
+            >
+              Dashboard
+            </span>
+            <span
+              className={`nav-tab ${activeTab === 'catalysts' ? 'active' : ''}`}
+              onClick={() => setActiveTab('catalysts')}
+            >
+              Catalyst Feed
+            </span>
+          </div>
+
+          {activeTab === 'dashboard' ? (
+            <Dashboard onViewDetails={(symbol) => setSelectedStock(symbol)} />
+          ) : (
+            <CatalystFeed
+              onViewDetails={(symbol) => setSelectedStock(symbol)}
+              onTrackStock={(symbol) => console.log('Track:', symbol)}
+            />
+          )}
         </>
       )}
 

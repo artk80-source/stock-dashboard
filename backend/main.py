@@ -283,13 +283,12 @@ def get_stock_history(symbol: str, period: str = "1mo"):
     
     try:
         ticker = yf.Ticker(symbol.upper())
-        data = ticker.history(period=period)
-        
-        result = {
-            "symbol": symbol.upper(),
-            "dates": data.index.strftime("%Y-%m-%d").tolist(),
-            "prices": data['Close'].round(2).tolist(),
-        }
+        data = ticker.history(period=period).dropna(subset=['Close'])
+
+        date_keys = data.index.strftime("%Y-%m-%d").tolist()
+        closes = data['Close'].round(2).tolist()
+
+        result = {"data": dict(zip(date_keys, ({"close": c} for c in closes)))}
         set_cached(cache_key, result)
         return result
     except Exception as e:
@@ -306,53 +305,54 @@ def get_stock_analysis(symbol: str):
     try:
         ticker = yf.Ticker(symbol.upper())
         info = ticker.info if hasattr(ticker, 'info') else {}
-        
-        # Get current day data
-        today = ticker.history(period="1d")
-        yesterday = ticker.history(period="5d")
-        
+
+        # Get current day data (drop the in-progress/NaN row if market hasn't closed)
+        today = ticker.history(period="1d").dropna(subset=['Close'])
+        recent = ticker.history(period="5d").dropna(subset=['Close'])
+
         current_price = today['Close'].iloc[-1] if len(today) > 0 else None
         open_price = today['Open'].iloc[-1] if len(today) > 0 else None
         day_high = today['High'].iloc[-1] if len(today) > 0 else None
         day_low = today['Low'].iloc[-1] if len(today) > 0 else None
         current_volume = today['Volume'].iloc[-1] if len(today) > 0 else None
-        avg_volume = yesterday['Volume'].mean() if len(yesterday) > 0 else None
+        avg_volume = recent['Volume'].mean() if len(recent) > 0 else None
         previous_close = info.get('previousClose', current_price)
-        
-        intraday_change = current_price - open_price if (current_price and open_price) else 0
-        intraday_percent = (intraday_change / open_price * 100) if (open_price and open_price > 0) else 0
-        
-        volume_ratio = (current_volume / avg_volume * 100) if (current_volume and avg_volume and avg_volume > 0) else 0
-        
+
+        change = (current_price - previous_close) if (current_price and previous_close) else None
+        change_percent = (change / previous_close * 100) if (change and previous_close) else None
+
         # YTD calculation
-        ytd_start = yf.Ticker(symbol.upper()).history(start=f"{datetime.now().year}-01-01", end=datetime.now().strftime("%Y-%m-%d"))
+        ytd_start = yf.Ticker(symbol.upper()).history(
+            start=f"{datetime.now().year}-01-01", end=datetime.now().strftime("%Y-%m-%d")
+        ).dropna(subset=['Open'])
         ytd_change = None
-        if len(ytd_start) > 0:
+        if len(ytd_start) > 0 and current_price:
             ytd_open = ytd_start['Open'].iloc[0]
             ytd_change = ((current_price - ytd_open) / ytd_open * 100) if ytd_open > 0 else None
-        
+
+        dividend_yield = info.get('dividendYield')
+
         result = {
-            "symbol": symbol.upper(),
-            "dayTrade": {
-                "currentPrice": round(current_price, 2) if current_price else None,
-                "open": round(open_price, 2) if open_price else None,
-                "dayHigh": round(day_high, 2) if day_high else None,
-                "dayLow": round(day_low, 2) if day_low else None,
-                "previousClose": round(previous_close, 2) if previous_close else None,
-                "intradayChange": round(intraday_change, 2) if intraday_change else None,
-                "intradayChangePercent": round(intraday_percent, 2) if intraday_percent else None,
-                "currentVolume": int(current_volume) if current_volume else None,
-                "avgVolume": int(avg_volume) if avg_volume else None,
-                "volumeRatio": round(volume_ratio, 2) if volume_ratio else None,
-            },
-            "longTerm": {
-                "pe": round(info.get('trailingPE'), 2) if info.get('trailingPE') else None,
-                "marketCap": info.get('marketCap'),
-                "52WeekHigh": round(info.get('fiftyTwoWeekHigh'), 2) if info.get('fiftyTwoWeekHigh') else None,
-                "52WeekLow": round(info.get('fiftyTwoWeekLow'), 2) if info.get('fiftyTwoWeekLow') else None,
-                "dividendYield": round(info.get('dividendYield', 0) * 100, 2) if info.get('dividendYield') else None,
-                "targetPrice": round(info.get('targetPrice'), 2) if info.get('targetPrice') else None,
-                "ytdChange": round(ytd_change, 2) if ytd_change else None,
+            "data": {
+                "day_trade": {
+                    "price": safe_round(current_price),
+                    "open": safe_round(open_price),
+                    "day_high": safe_round(day_high),
+                    "day_low": safe_round(day_low),
+                    "previous_close": safe_round(previous_close),
+                    "change_percent": safe_round(change_percent),
+                    "volume": int(current_volume) if current_volume else None,
+                    "avg_volume": int(avg_volume) if avg_volume else None,
+                },
+                "long_term": {
+                    "pe_ratio": safe_round(info.get('trailingPE')),
+                    "market_cap": info.get('marketCap'),
+                    "fifty_two_week_low": safe_round(info.get('fiftyTwoWeekLow')),
+                    "fifty_two_week_high": safe_round(info.get('fiftyTwoWeekHigh')),
+                    "dividend_yield": safe_round(dividend_yield * 100) if dividend_yield else None,
+                    "analyst_target": safe_round(info.get('targetMeanPrice')),
+                    "ytd_return": safe_round(ytd_change),
+                },
             }
         }
         set_cached(cache_key, result)
@@ -371,35 +371,34 @@ def get_stock_news(symbol: str):
     try:
         ticker = yf.Ticker(symbol.upper())
         news_list = []
-        
-        # Try to get news - it may not exist or be malformed
+
         try:
             raw_news = ticker.news if hasattr(ticker, 'news') else []
-            
+
             if raw_news and isinstance(raw_news, list):
-                for item in raw_news[:10]:  # Limit to 10 items
+                for item in raw_news[:10]:
                     try:
-                        news_item = {
-                            "title": item.get('title', 'No title'),
-                            "publisher": item.get('publisher', 'Unknown'),
-                            "link": item.get('link', ''),
-                            "publishDate": item.get('provenance', item.get('pubDate', 'Unknown')),
-                        }
-                        news_list.append(news_item)
-                    except:
+                        content = item.get('content', item)
+                        title = content.get('title', 'No title')
+                        published_ts = parse_pub_date(content.get('pubDate'))
+                        provider = content.get('provider', {})
+
+                        news_list.append({
+                            "headline": title,
+                            "source": provider.get('displayName', 'Unknown'),
+                            "published_date": time_ago_from_timestamp(published_ts),
+                            "sentiment": score_sentiment(title),
+                        })
+                    except Exception:
                         continue
-        except:
-            # If news fails completely, just return empty
+        except Exception:
             pass
-        
-        result = {
-            "symbol": symbol.upper(),
-            "news": news_list
-        }
+
+        result = {"data": news_list}
         set_cached(cache_key, result)
         return result
     except Exception as e:
-        return {"symbol": symbol.upper(), "news": []}
+        return {"data": []}
 
 @app.get("/api/search/{query}")
 def search_stocks(query: str):
