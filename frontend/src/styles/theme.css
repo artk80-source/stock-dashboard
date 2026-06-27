@@ -610,6 +610,8 @@ p {
 .metrics-table td.label {
   color: var(--text-secondary);
   font-size: 12.5px;
+  cursor: help;
+  border-bottom: 1px dotted var(--border-medium);
 }
 
 .metrics-table td.value {

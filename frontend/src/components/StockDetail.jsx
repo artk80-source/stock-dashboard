@@ -25,6 +25,21 @@ ChartJS.register(
  * StockDetail - Shows detailed view of a stock with chart and metrics
  * Includes period tabs (1D, 5D, 1M, 3M, 6M, 1Y), chart, and dual metrics sections
  */
+const METRIC_TOOLTIPS = {
+  price: "Current trading price per share. Example: $283.78 means each share costs $283.78 right now.",
+  open: "Price at which the stock started trading today. Example: $275.00 was today's opening price.",
+  dayHL: "Highest and lowest price reached today. Example: $286 high / $274 low is a $12 trading range.",
+  prevClose: "Closing price from the previous trading session. Example: $275.15 was yesterday's close.",
+  intraday: "Percent change from today's open to the current price. Example: +3.14% means the price rose 3.14% since opening.",
+  volAvg: "Today's volume vs the average recent volume. Example: 261M vs 64M avg means much higher trading activity than usual.",
+  pe: "Price-to-earnings ratio: share price divided by earnings per share. Example: P/E of 34 means investors pay $34 per $1 of earnings.",
+  marketCap: "Total value of all outstanding shares (price x shares outstanding). Example: $4.17T means the company is worth $4.17 trillion.",
+  range52w: "Lowest and highest price over the past 52 weeks. Example: $199 - $317 shows the year's trading range.",
+  divYield: "Annual dividend payments as a percent of share price. Example: 0.38% yield pays $0.38/year per $100 invested.",
+  analystTarget: "Average 12-month price target from Wall Street analysts. Example: $315 target means analysts expect the price to reach $315.",
+  ytd: "Percent change in price since the start of the year. Example: +4.42% means the stock has gained 4.42% year-to-date.",
+};
+
 const StockDetail = ({ symbol, onClose }) => {
   const [period, setPeriod] = useState('5D');
   const [chartData, setChartData] = useState(null);
@@ -260,31 +275,31 @@ const StockDetail = ({ symbol, onClose }) => {
                   <table className="metrics-table">
                     <tbody>
                       <tr>
-                        <td className="label">Price</td>
+                        <td className="label" title={METRIC_TOOLTIPS.price}>Price</td>
                         <td className="value bold">${dayMetrics?.price?.toFixed(2)}</td>
                       </tr>
                       <tr>
-                        <td className="label">Open</td>
+                        <td className="label" title={METRIC_TOOLTIPS.open}>Open</td>
                         <td className="value">${dayMetrics?.open?.toFixed(2)}</td>
                       </tr>
                       <tr>
-                        <td className="label">Day H/L</td>
+                        <td className="label" title={METRIC_TOOLTIPS.dayHL}>Day H/L</td>
                         <td className="value">
                           ${dayMetrics?.day_high?.toFixed(0)} / ${dayMetrics?.day_low?.toFixed(0)}
                         </td>
                       </tr>
                       <tr>
-                        <td className="label">Prev close</td>
+                        <td className="label" title={METRIC_TOOLTIPS.prevClose}>Prev close</td>
                         <td className="value">${dayMetrics?.previous_close?.toFixed(2)}</td>
                       </tr>
                       <tr>
-                        <td className="label">Intraday %</td>
+                        <td className="label" title={METRIC_TOOLTIPS.intraday}>Intraday %</td>
                         <td className={`value bold ${dayMetrics?.change_percent >= 0 ? 'up' : 'down'}`}>
                           {dayMetrics?.change_percent >= 0 ? '+' : ''}{dayMetrics?.change_percent?.toFixed(2)}%
                         </td>
                       </tr>
                       <tr>
-                        <td className="label">Vol / avg</td>
+                        <td className="label" title={METRIC_TOOLTIPS.volAvg}>Vol / avg</td>
                         <td className="value">
                           {(dayMetrics?.volume / 1000000)?.toFixed(0)}M / {(dayMetrics?.avg_volume / 1000000)?.toFixed(0)}M
                         </td>
@@ -304,31 +319,31 @@ const StockDetail = ({ symbol, onClose }) => {
                   <table className="metrics-table">
                     <tbody>
                       <tr>
-                        <td className="label">P/E ratio</td>
+                        <td className="label" title={METRIC_TOOLTIPS.pe}>P/E ratio</td>
                         <td className="value">{longTermMetrics?.pe_ratio?.toFixed(1)}</td>
                       </tr>
                       <tr>
-                        <td className="label">Market cap</td>
+                        <td className="label" title={METRIC_TOOLTIPS.marketCap}>Market cap</td>
                         <td className="value">${(longTermMetrics?.market_cap / 1e12)?.toFixed(2)}T</td>
                       </tr>
                       <tr>
-                        <td className="label">52w range</td>
+                        <td className="label" title={METRIC_TOOLTIPS.range52w}>52w range</td>
                         <td className="value">
                           ${longTermMetrics?.fifty_two_week_low?.toFixed(0)} – ${longTermMetrics?.fifty_two_week_high?.toFixed(0)}
                         </td>
                       </tr>
                       <tr>
-                        <td className="label">Div yield</td>
+                        <td className="label" title={METRIC_TOOLTIPS.divYield}>Div yield</td>
                         <td className="value">{longTermMetrics?.dividend_yield?.toFixed(2)}%</td>
                       </tr>
                       <tr>
-                        <td className="label">Analyst target</td>
+                        <td className="label" title={METRIC_TOOLTIPS.analystTarget}>Analyst target</td>
                         <td className={`value ${longTermMetrics?.analyst_target >= dayMetrics?.price ? 'up' : 'down'}`}>
                           ${longTermMetrics?.analyst_target?.toFixed(0)}
                         </td>
                       </tr>
                       <tr>
-                        <td className="label">YTD return</td>
+                        <td className="label" title={METRIC_TOOLTIPS.ytd}>YTD return</td>
                         <td className={`value bold ${longTermMetrics?.ytd_return >= 0 ? 'up' : 'down'}`}>
                           {longTermMetrics?.ytd_return >= 0 ? '+' : ''}{longTermMetrics?.ytd_return?.toFixed(1)}%
                         </td>
