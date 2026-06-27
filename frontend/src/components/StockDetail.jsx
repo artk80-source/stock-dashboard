@@ -347,7 +347,14 @@ const StockDetail = ({ symbol, onClose }) => {
                   {news.map((item, index) => {
                     const sentimentClass = getSentimentClass(item.sentiment || 0);
                     return (
-                      <div key={index} className={`news-item ${sentimentClass}`}>
+                      <a
+                        key={index}
+                        href={item.url || undefined}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className={`news-item ${sentimentClass}`}
+                        style={{ display: 'block', textDecoration: 'none', cursor: item.url ? 'pointer' : 'default' }}
+                      >
                         <div className="news-meta">
                           <span className="news-source">{item.source || 'Reuters'} · {item.published_date}</span>
                           <span className={`news-score ${sentimentClass}`}>
@@ -355,7 +362,7 @@ const StockDetail = ({ symbol, onClose }) => {
                           </span>
                         </div>
                         <p className="news-title">{item.headline || item.title}</p>
-                      </div>
+                      </a>
                     );
                   })}
                 </div>

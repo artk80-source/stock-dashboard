@@ -181,6 +181,8 @@ def get_catalysts(lookback_hours: int = 2, min_sentiment: float = 0.3, limit: in
                 if sentiment < min_sentiment:
                     continue
 
+                link = content.get('canonicalUrl') or content.get('clickThroughUrl') or {}
+
                 catalysts.append({
                     "symbol": symbol,
                     "company_name": info.get('longName', symbol),
@@ -192,6 +194,7 @@ def get_catalysts(lookback_hours: int = 2, min_sentiment: float = 0.3, limit: in
                     "sentiment": sentiment,
                     "category": categorize(title),
                     "time_ago": time_ago_from_timestamp(published_ts),
+                    "url": link.get('url', ''),
                     "volume_vs_avg": volume_vs_avg,
                     "day_low": safe_round(info.get('dayLow')),
                     "day_high": safe_round(info.get('dayHigh')),
@@ -382,12 +385,14 @@ def get_stock_news(symbol: str):
                         title = content.get('title', 'No title')
                         published_ts = parse_pub_date(content.get('pubDate'))
                         provider = content.get('provider', {})
+                        link = content.get('canonicalUrl') or content.get('clickThroughUrl') or {}
 
                         news_list.append({
                             "headline": title,
                             "source": provider.get('displayName', 'Unknown'),
                             "published_date": time_ago_from_timestamp(published_ts),
                             "sentiment": score_sentiment(title),
+                            "url": link.get('url', ''),
                         })
                     except Exception:
                         continue

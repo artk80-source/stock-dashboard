@@ -14,6 +14,7 @@ const CatalystCard = ({
   exchange,
   avatarColor = 'teal',
   headline,
+  url,
   sentiment,
   timeAgo,
   stats = {},
@@ -70,7 +71,19 @@ const CatalystCard = ({
         </div>
       </div>
 
-      <p className="headline">{headline}</p>
+      {url ? (
+        <a
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="headline"
+          style={{ display: 'block', textDecoration: 'none', color: 'inherit' }}
+        >
+          {headline}
+        </a>
+      ) : (
+        <p className="headline">{headline}</p>
+      )}
 
       <div className="stats-bar">
         {stats.volVsAvg && (

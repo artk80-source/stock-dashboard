@@ -147,6 +147,7 @@ const CatalystFeed = ({ onViewDetails, onTrackStock }) => {
               exchange={catalyst.exchange || 'NASDAQ'}
               avatarColor={getAvatarColor(catalyst.symbol)}
               headline={catalyst.headline || catalyst.title || 'Market news'}
+              url={catalyst.url}
               sentiment={catalyst.sentiment || 0.5}
               timeAgo={catalyst.time_ago || 'recently'}
               stats={{
