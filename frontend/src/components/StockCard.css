@@ -1,0 +1,237 @@
+.stock-card {
+  background: white;
+  border-radius: 12px;
+  padding: 20px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+  margin-bottom: 20px;
+  border: 1px solid #e5e7eb;
+}
+
+.stock-card.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  font-size: 18px;
+  color: #6b7280;
+}
+
+.stock-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 20px;
+}
+
+.stock-card-header h3 {
+  margin: 0;
+  font-size: 24px;
+  color: #1f2937;
+}
+
+.company-name {
+  margin: 4px 0 0 0;
+  color: #6b7280;
+  font-size: 14px;
+}
+
+.remove-btn {
+  background: #ef4444;
+  color: white;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.remove-btn:hover {
+  background: #dc2626;
+}
+
+.stock-price-section {
+  margin-bottom: 20px;
+}
+
+.current-price {
+  font-size: 32px;
+  font-weight: bold;
+  color: #1f2937;
+  margin-bottom: 8px;
+}
+
+.price-change {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.price-change.positive {
+  color: #10b981;
+}
+
+.price-change.negative {
+  color: #ef4444;
+}
+
+.chart-section {
+  margin: 20px 0;
+  padding: 15px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.period-buttons {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 15px;
+  flex-wrap: wrap;
+}
+
+.period-btn {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.period-btn:hover {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.period-btn.active {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.chart-container {
+  position: relative;
+  height: 300px;
+}
+
+.analysis-section {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  margin: 20px 0;
+  padding: 15px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.analysis-column h4 {
+  margin: 0 0 15px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.kpi-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.kpi {
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  background: white;
+  border-radius: 6px;
+  border: 1px solid #e5e7eb;
+}
+
+.kpi .label {
+  font-size: 12px;
+  color: #6b7280;
+  margin-bottom: 4px;
+  font-weight: 500;
+}
+
+.kpi .value {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+}
+
+.news-section {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f9fafb;
+  border-radius: 8px;
+}
+
+.news-section h4 {
+  margin: 0 0 15px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #1f2937;
+  text-transform: uppercase;
+}
+
+.news-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.news-item {
+  display: block;
+  padding: 12px;
+  background: white;
+  border-left: 3px solid #3b82f6;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: all 0.2s;
+  border: 1px solid #e5e7eb;
+  border-left: 3px solid #3b82f6;
+}
+
+.news-item:hover {
+  background: #eff6ff;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.news-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1f2937;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.news-meta {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.no-news {
+  text-align: center;
+  color: #9ca3af;
+  padding: 20px;
+  margin: 0;
+}
+
+@media (max-width: 768px) {
+  .analysis-section {
+    grid-template-columns: 1fr;
+  }
+
+  .kpi-grid {
+    grid-template-columns: 1fr;
+  }
+}

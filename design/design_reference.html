@@ -1,0 +1,824 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Stock Dashboard - Design Reference (Vibrant)</title>
+<!--
+========================================================================
+  DESIGN REFERENCE FOR STOCK DASHBOARD FRONTEND - VIBRANT THEME
+  ========================================================================
+  This file is a visual + structural reference for the React frontend.
+  The Agent should:
+    1. Read this file to understand layout, colors, typography, spacing.
+    2. Reproduce the same visual design in React components.
+    3. Use the same CSS variables and class naming conventions.
+    4. NOT copy this file verbatim into the project. It is a MOCKUP.
+  ========================================================================
+  VIBRANT THEME — uses a deeper background, accent gradients on hero
+  elements, stronger semantic colors for sentiment, and category-tagged
+  cards. Designed to feel energetic without sacrificing readability.
+  ========================================================================
+-->
+<style>
+  :root {
+    /* === Page & surface tokens === */
+    --bg-page: #0F1419;            /* dark navy page background */
+    --bg-card: #1A2030;            /* deep blue card surface */
+    --bg-card-hover: #1F2638;
+    --bg-surface: #232B3D;         /* nested surfaces inside cards */
+    --bg-elevated: #2A3349;
+
+    /* === Text === */
+    --text-primary: #F2F4F8;
+    --text-secondary: #9AA5BD;
+    --text-tertiary: #6B7593;
+
+    /* === Accent / brand === */
+    --accent-blue: #3B82F6;
+    --accent-purple: #8B5CF6;
+    --accent-cyan: #06B6D4;
+
+    /* === Borders === */
+    --border-subtle: rgba(255, 255, 255, 0.06);
+    --border-medium: rgba(255, 255, 255, 0.12);
+    --border-strong: rgba(255, 255, 255, 0.2);
+
+    /* === Sentiment — vivid greens & ambers === */
+    --gain: #10D982;
+    --gain-bg: rgba(16, 217, 130, 0.12);
+    --gain-bg-strong: rgba(16, 217, 130, 0.22);
+    --gain-border: rgba(16, 217, 130, 0.35);
+
+    --loss: #FF5C5C;
+    --loss-bg: rgba(255, 92, 92, 0.12);
+
+    --warm: #F59E0B;
+    --warm-bg: rgba(245, 158, 11, 0.14);
+    --warm-border: rgba(245, 158, 11, 0.4);
+
+    --neutral: #6B7593;
+    --neutral-bg: rgba(155, 165, 189, 0.10);
+
+    /* === Avatar gradient backgrounds === */
+    --av-teal: linear-gradient(135deg, #10D982 0%, #06B6D4 100%);
+    --av-amber: linear-gradient(135deg, #F59E0B 0%, #EF4444 100%);
+    --av-purple: linear-gradient(135deg, #8B5CF6 0%, #EC4899 100%);
+    --av-blue: linear-gradient(135deg, #3B82F6 0%, #06B6D4 100%);
+
+    /* === Radius === */
+    --radius-sm: 6px;
+    --radius-md: 10px;
+    --radius-lg: 14px;
+    --radius-xl: 20px;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-page);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 32px 24px;
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .container {
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  h1, h2 { font-weight: 600; margin: 0; letter-spacing: -0.01em; }
+  h1 { font-size: 26px; }
+  h2 { font-size: 19px; }
+
+  .section-header { margin-bottom: 20px; }
+  .section-header h2 { margin-bottom: 4px; }
+  .section-header p {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+  }
+  .updated-time {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .live-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--gain);
+    box-shadow: 0 0 0 4px var(--gain-bg);
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.5; }
+  }
+  .header-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+
+  /* === Filter chips === */
+  .chips {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+    flex-wrap: wrap;
+  }
+  .chip {
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--bg-surface);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .chip:hover { background: var(--bg-elevated); color: var(--text-primary); }
+  .chip.active {
+    background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+    color: white;
+    border-color: transparent;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+  }
+
+  /* === Catalyst feed === */
+  .feed {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 48px;
+  }
+
+  /* === Catalyst card === */
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 18px 20px;
+    position: relative;
+    overflow: hidden;
+    transition: all 0.2s;
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--accent-blue);
+  }
+  .card.hot::before {
+    background: linear-gradient(180deg, var(--gain) 0%, var(--accent-cyan) 100%);
+  }
+  .card.warm::before {
+    background: var(--warm);
+  }
+  .card:hover {
+    background: var(--bg-card-hover);
+    border-color: var(--border-medium);
+  }
+
+  .card-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .company {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+  .avatar {
+    width: 46px;
+    height: 46px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 13px;
+    color: white;
+    letter-spacing: 0.02em;
+  }
+  .avatar.teal   { background: var(--av-teal); }
+  .avatar.amber  { background: var(--av-amber); }
+  .avatar.purple { background: var(--av-purple); font-size: 12px; }
+  .avatar.blue   { background: var(--av-blue); }
+
+  .company-name {
+    font-weight: 600;
+    font-size: 16px;
+    margin: 0;
+    color: var(--text-primary);
+  }
+  .company-meta {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 3px 0 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .price {
+    font-weight: 600;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+  }
+  .change-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 6px;
+    font-variant-numeric: tabular-nums;
+  }
+  .change-pill.up   { background: var(--gain-bg); color: var(--gain); }
+  .change-pill.down { background: var(--loss-bg); color: var(--loss); }
+
+  .badges { text-align: right; }
+  .sentiment-badge {
+    font-size: 11px;
+    font-weight: 700;
+    padding: 5px 11px;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .sentiment-badge.strong {
+    background: var(--gain-bg-strong);
+    color: var(--gain);
+    border: 1px solid var(--gain-border);
+  }
+  .sentiment-badge.medium {
+    background: var(--warm-bg);
+    color: var(--warm);
+    border: 1px solid var(--warm-border);
+  }
+  .sentiment-badge.neutral {
+    background: var(--neutral-bg);
+    color: var(--text-secondary);
+    border: 1px solid var(--border-subtle);
+  }
+  .time-ago {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin: 5px 0 0;
+  }
+
+  .headline {
+    font-size: 14.5px;
+    line-height: 1.55;
+    margin: 0 0 14px;
+    color: var(--text-primary);
+  }
+
+  /* === Inline stats bar === */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--border-subtle);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .stat-cell {
+    background: var(--bg-surface);
+    padding: 10px 12px;
+  }
+  .stat-label {
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-tertiary);
+    margin: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .stat-value {
+    font-size: 15px;
+    font-weight: 600;
+    margin: 3px 0 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+  }
+  .stat-value.up   { color: var(--gain); }
+  .stat-value.down { color: var(--loss); }
+
+  /* === Action buttons === */
+  .actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 14px;
+  }
+  button {
+    flex: 1;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-md);
+    padding: 9px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  button:hover {
+    background: var(--bg-elevated);
+    border-color: var(--border-medium);
+  }
+  button.primary {
+    background: linear-gradient(135deg, var(--accent-blue) 0%, var(--accent-purple) 100%);
+    border-color: transparent;
+    color: white;
+    font-weight: 600;
+    box-shadow: 0 4px 14px rgba(59, 130, 246, 0.3);
+  }
+  button.primary:hover {
+    box-shadow: 0 6px 20px rgba(59, 130, 246, 0.45);
+    transform: translateY(-1px);
+  }
+
+  /* === Drill-down detail === */
+  .detail-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-lg);
+    padding: 22px;
+  }
+  .period-tabs {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 18px;
+    background: var(--bg-surface);
+    padding: 4px;
+    border-radius: var(--radius-md);
+    width: fit-content;
+  }
+  .period-tab {
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    color: var(--text-secondary);
+    transition: all 0.15s;
+  }
+  .period-tab:hover { color: var(--text-primary); }
+  .period-tab.active {
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+  }
+
+  .chart-wrap {
+    background: var(--bg-surface);
+    border-radius: var(--radius-md);
+    padding: 18px;
+    height: 220px;
+    margin-bottom: 22px;
+    position: relative;
+  }
+
+  .metrics-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+  .metrics-section-title {
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--text-tertiary);
+    margin: 0 0 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .metrics-section-title .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+  }
+  .metrics-section-title .dot.day { background: var(--warm); }
+  .metrics-section-title .dot.long { background: var(--accent-blue); }
+
+  .metrics-table-wrap {
+    background: var(--bg-surface);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+  }
+  .metrics-table {
+    width: 100%;
+    font-size: 13px;
+    border-collapse: collapse;
+  }
+  .metrics-table td {
+    padding: 5px 0;
+  }
+  .metrics-table tr + tr td {
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 7px;
+    padding-bottom: 5px;
+  }
+  .metrics-table td.label { color: var(--text-secondary); font-size: 12.5px; }
+  .metrics-table td.value {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+  .metrics-table td.value.bold  { font-weight: 700; }
+  .metrics-table td.value.up    { color: var(--gain); }
+  .metrics-table td.value.down  { color: var(--loss); }
+
+  /* === News list inside detail === */
+  .news-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .news-item {
+    padding: 12px 14px;
+    background: var(--bg-surface);
+    border-radius: var(--radius-md);
+    border-left: 3px solid var(--neutral);
+    transition: all 0.15s;
+    cursor: pointer;
+  }
+  .news-item:hover {
+    background: var(--bg-elevated);
+  }
+  .news-item.strong { border-left-color: var(--gain); }
+  .news-item.medium { border-left-color: var(--warm); }
+  .news-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+  }
+  .news-source {
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-weight: 500;
+  }
+  .news-score {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+  }
+  .news-score.strong { background: var(--gain-bg-strong); color: var(--gain); }
+  .news-score.medium { background: var(--warm-bg); color: var(--warm); }
+  .news-score.neutral{ background: var(--neutral-bg); color: var(--text-secondary); }
+  .news-title {
+    font-size: 13.5px;
+    margin: 0;
+    color: var(--text-primary);
+    line-height: 1.45;
+  }
+
+  /* === Chart SVG === */
+  .sparkline-svg { width: 100%; height: 100%; }
+  .sparkline-line { fill: none; stroke: url(#chartGradient); stroke-width: 2.5; }
+  .sparkline-fill { fill: url(#fillGradient); stroke: none; }
+  .catalyst-line { stroke: var(--warm); stroke-width: 1.5; stroke-dasharray: 4,4; }
+  .catalyst-label {
+    font-size: 10px;
+    fill: var(--warm);
+    font-family: inherit;
+    font-weight: 600;
+  }
+
+  .section-spacer { height: 48px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- ============================================== -->
+  <!-- SECTION 1: CATALYST FEED                       -->
+  <!-- ============================================== -->
+  <div class="section-header">
+    <div class="header-row">
+      <h2>Catalyst feed</h2>
+      <span class="updated-time"><span class="live-dot"></span> Live · updated 14:32</span>
+    </div>
+    <p>Positive news from S&amp;P 500 in the last 2 hours, sorted by sentiment score</p>
+  </div>
+
+  <div class="chips">
+    <span class="chip active">All</span>
+    <span class="chip">Earnings</span>
+    <span class="chip">Upgrades</span>
+    <span class="chip">M&amp;A</span>
+    <span class="chip">FDA</span>
+  </div>
+
+  <div class="feed">
+
+    <!-- CARD 1: HOT — strong sentiment example (Micron) -->
+    <div class="card hot">
+      <div class="card-top">
+        <div class="company">
+          <div class="avatar teal">MU</div>
+          <div>
+            <p class="company-name">Micron Technology</p>
+            <p class="company-meta">
+              <span class="price">$895.88</span>
+              <span class="change-pill up">▲ 19.29%</span>
+              <span>· NASDAQ</span>
+            </p>
+          </div>
+        </div>
+        <div class="badges">
+          <span class="sentiment-badge strong">+0.94 bullish</span>
+          <p class="time-ago">14:18 · 14m ago</p>
+        </div>
+      </div>
+      <p class="headline">UBS triples Micron price target to $1,625, the highest on Wall Street. HBM capacity sold out through 2026.</p>
+      <div class="stats-bar">
+        <div class="stat-cell"><p class="stat-label">Vol vs avg</p><p class="stat-value up">3.2×</p></div>
+        <div class="stat-cell"><p class="stat-label">Day range</p><p class="stat-value">820–916</p></div>
+        <div class="stat-cell"><p class="stat-label">P/E</p><p class="stat-value">42.3</p></div>
+        <div class="stat-cell"><p class="stat-label">YTD</p><p class="stat-value up">+168%</p></div>
+      </div>
+      <div class="actions">
+        <button class="primary">View details</button>
+        <button>Track stock</button>
+      </div>
+    </div>
+
+    <!-- CARD 2: HOT — Western Digital -->
+    <div class="card hot">
+      <div class="card-top">
+        <div class="company">
+          <div class="avatar amber">WDC</div>
+          <div>
+            <p class="company-name">Western Digital</p>
+            <p class="company-meta">
+              <span class="price">$533.75</span>
+              <span class="change-pill up">▲ 9.6%</span>
+              <span>· NASDAQ</span>
+            </p>
+          </div>
+        </div>
+        <div class="badges">
+          <span class="sentiment-badge strong">+0.81 bullish</span>
+          <p class="time-ago">13:50 · 42m ago</p>
+        </div>
+      </div>
+      <p class="headline">Evercore lifts WDC target to $575 from $410, cites underappreciated role in AI infrastructure. Dividend raised 20%.</p>
+      <div class="stats-bar">
+        <div class="stat-cell"><p class="stat-label">Vol vs avg</p><p class="stat-value up">2.1×</p></div>
+        <div class="stat-cell"><p class="stat-label">Day range</p><p class="stat-value">500–545</p></div>
+        <div class="stat-cell"><p class="stat-label">P/E</p><p class="stat-value">28.1</p></div>
+        <div class="stat-cell"><p class="stat-label">YTD</p><p class="stat-value up">+170%</p></div>
+      </div>
+      <div class="actions">
+        <button class="primary">View details</button>
+        <button>Track stock</button>
+      </div>
+    </div>
+
+    <!-- CARD 3: WARM — medium sentiment (Broadcom) -->
+    <div class="card warm">
+      <div class="card-top">
+        <div class="company">
+          <div class="avatar purple">AVGO</div>
+          <div>
+            <p class="company-name">Broadcom</p>
+            <p class="company-meta">
+              <span class="price">$1,892.40</span>
+              <span class="change-pill up">▲ 4.2%</span>
+              <span>· NASDAQ</span>
+            </p>
+          </div>
+        </div>
+        <div class="badges">
+          <span class="sentiment-badge medium">+0.62 positive</span>
+          <p class="time-ago">12:05 · 2h ago</p>
+        </div>
+      </div>
+      <p class="headline">Q4 AI revenue guidance raised to $8.2B, doubling YoY. OpenAI confirmed as sixth custom-silicon customer.</p>
+      <div class="stats-bar">
+        <div class="stat-cell"><p class="stat-label">Vol vs avg</p><p class="stat-value">1.4×</p></div>
+        <div class="stat-cell"><p class="stat-label">Day range</p><p class="stat-value">1820–1910</p></div>
+        <div class="stat-cell"><p class="stat-label">P/E</p><p class="stat-value">38.7</p></div>
+        <div class="stat-cell"><p class="stat-label">YTD</p><p class="stat-value up">+52%</p></div>
+      </div>
+      <div class="actions">
+        <button class="primary">View details</button>
+        <button>Track stock</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================== -->
+  <!-- SECTION 2: STOCK DETAIL DRILLDOWN              -->
+  <!-- ============================================== -->
+  <div class="section-header">
+    <h2>Drill-down — Micron Technology</h2>
+    <p>Shown after clicking "View details" on a catalyst card</p>
+  </div>
+
+  <div class="detail-card">
+
+    <div class="period-tabs">
+      <span class="period-tab">1D</span>
+      <span class="period-tab active">5D</span>
+      <span class="period-tab">1M</span>
+      <span class="period-tab">3M</span>
+      <span class="period-tab">6M</span>
+      <span class="period-tab">1Y</span>
+    </div>
+
+    <div class="chart-wrap">
+      <svg viewBox="0 0 600 180" class="sparkline-svg" preserveAspectRatio="none">
+        <defs>
+          <linearGradient id="chartGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#06B6D4"/>
+            <stop offset="100%" stop-color="#10D982"/>
+          </linearGradient>
+          <linearGradient id="fillGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stop-color="#10D982" stop-opacity="0.25"/>
+            <stop offset="100%" stop-color="#10D982" stop-opacity="0"/>
+          </linearGradient>
+        </defs>
+        <polyline class="sparkline-line" points="0,130 50,125 100,128 150,118 200,108 250,100 300,85 320,40 340,35 360,55 400,62 450,42 500,25 550,33 600,28"/>
+        <polyline class="sparkline-fill" points="0,130 50,125 100,128 150,118 200,108 250,100 300,85 320,40 340,35 360,55 400,62 450,42 500,25 550,33 600,28 600,180 0,180"/>
+        <line class="catalyst-line" x1="320" y1="0" x2="320" y2="180"/>
+        <text class="catalyst-label" x="325" y="16">⚡ UBS upgrade</text>
+      </svg>
+    </div>
+
+    <div class="metrics-grid">
+      <div>
+        <p class="metrics-section-title"><span class="dot day"></span>Day trade view</p>
+        <div class="metrics-table-wrap">
+          <table class="metrics-table">
+            <tr><td class="label">Price</td><td class="value bold">$895.88</td></tr>
+            <tr><td class="label">Open</td><td class="value">$821.40</td></tr>
+            <tr><td class="label">Day H/L</td><td class="value">$916 / $820</td></tr>
+            <tr><td class="label">Prev close</td><td class="value">$750.94</td></tr>
+            <tr><td class="label">Intraday %</td><td class="value bold up">+19.29%</td></tr>
+            <tr><td class="label">Vol / avg</td><td class="value">142M / 44M</td></tr>
+          </table>
+        </div>
+      </div>
+      <div>
+        <p class="metrics-section-title"><span class="dot long"></span>Long-term view</p>
+        <div class="metrics-table-wrap">
+          <table class="metrics-table">
+            <tr><td class="label">P/E ratio</td><td class="value">42.3</td></tr>
+            <tr><td class="label">Market cap</td><td class="value">$1.00T</td></tr>
+            <tr><td class="label">52w range</td><td class="value">$84 – $916</td></tr>
+            <tr><td class="label">Div yield</td><td class="value">0.05%</td></tr>
+            <tr><td class="label">Analyst target</td><td class="value up">$1,180</td></tr>
+            <tr><td class="label">YTD return</td><td class="value bold up">+168%</td></tr>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div>
+      <p class="metrics-section-title">Recent news</p>
+      <div class="news-list">
+        <div class="news-item strong">
+          <div class="news-meta">
+            <span class="news-source">Reuters · 14:18</span>
+            <span class="news-score strong">+0.94</span>
+          </div>
+          <p class="news-title">Micron hits $1 trillion market cap as UBS sets Street-high target</p>
+        </div>
+        <div class="news-item strong">
+          <div class="news-meta">
+            <span class="news-source">CNBC · 13:42</span>
+            <span class="news-score strong">+0.81</span>
+          </div>
+          <p class="news-title">HBM capacity sold out through 2026, Micron says demand exceeds supply</p>
+        </div>
+        <div class="news-item medium">
+          <div class="news-meta">
+            <span class="news-source">Bloomberg · 11:20</span>
+            <span class="news-score medium">+0.55</span>
+          </div>
+          <p class="news-title">Citi reiterates buy on memory chipmakers as AI demand accelerates</p>
+        </div>
+        <div class="news-item">
+          <div class="news-meta">
+            <span class="news-source">MarketWatch · 09:15</span>
+            <span class="news-score neutral">+0.12</span>
+          </div>
+          <p class="news-title">Insider sales total $54M over last quarter — analysts split on signal</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================== -->
+  <!-- DESIGN SYSTEM NOTES FOR THE AGENT             -->
+  <!-- ============================================== -->
+  <!--
+    THEME: Dark, vibrant fintech dashboard. Inspired by Robinhood, Linear, Vercel dashboards.
+
+    PAGE LAYOUT:
+      - Background: --bg-page (deep navy #0F1419).
+      - Max container width: 800px, centered.
+      - Vertical spacing between major sections: 48px.
+      - Card padding: 18px 20px (feed cards), 22px (detail card).
+      - Card-to-card gap inside feed: 14px.
+
+    TYPOGRAPHY (use system font stack + 'Inter' fallback):
+      - Section h2: 19px / weight 600 / letter-spacing -0.01em.
+      - Card company name: 16px / weight 600.
+      - Body / headline: 14.5px / weight 400 / line-height 1.55.
+      - Metadata / secondary: 13px.
+      - Labels (ALL CAPS micro): 10–11px / weight 500–700 / letter-spacing 0.06–0.08em.
+      - Stat values: 15px / weight 600.
+      - Badge text: 11px / weight 700 / UPPERCASE / letter-spacing 0.02em.
+      - Numbers: always font-variant-numeric: tabular-nums; for alignment.
+      - Sentence case for body text. Micro-labels (stat labels, section titles) are UPPERCASE.
+
+    COLOR SEMANTICS:
+      - Surfaces: --bg-card (#1A2030), --bg-surface (#232B3D), --bg-elevated (#2A3349).
+        Always layer surfaces — never put content directly on --bg-page. Nest one level deeper for inner stat bars.
+      - Positive numbers, gains, bullish: var(--gain) #10D982 (vivid teal-green).
+      - Negative numbers, losses: var(--loss) #FF5C5C.
+      - Catalyst marker, warnings, medium sentiment: var(--warm) #F59E0B (amber).
+      - Hero / primary CTAs: gradient from --accent-blue (#3B82F6) to --accent-purple (#8B5CF6).
+      - Avatars: 4 gradient combinations (teal→cyan, amber→red, purple→pink, blue→cyan).
+        Rotate consistently per ticker — same ticker should always get the same avatar gradient.
+
+    SENTIMENT THRESHOLDS:
+      - ≥0.7  →  "strong" class  →  green badge + green left-bar.
+      - 0.3–0.7 → "medium" class →  amber badge + amber left-bar.
+      - <0.3  →  "neutral" class →  gray badge + gray left-bar.
+
+    BORDERS & RADIUS:
+      - Subtle borders: 1px solid rgba(255,255,255,0.06).
+      - Stronger: 1px solid rgba(255,255,255,0.12) on hover.
+      - Radius scale: 6 (small pills), 10 (cards), 14 (large cards), 20 (special).
+
+    INTERACTION:
+      - Cards: hover lightens background by one step. NO transform/scale on hover.
+      - Buttons (primary gradient): hover slightly lifts (translateY -1px) + bigger shadow.
+      - The "Live" dot in the header pulses (2s ease-in-out, opacity 1→0.5→1).
+      - Chart line: drawn with a horizontal gradient (cyan → green).
+      - Chart fill: vertical gradient from green-25% to transparent.
+
+    CARD ACCENT BAR (left side, 3px wide):
+      - .card.hot     → vertical gradient gain→cyan (strongest signals).
+      - .card.warm    → solid amber (medium sentiment).
+      - .card (default) → solid accent-blue.
+
+    DO NOT:
+      - Do not use pure black (#000) or pure white (#FFF) for text/backgrounds.
+      - Do not introduce more than 3 colored gradients in a single card.
+      - Do not use heavy box-shadows; only use shadows for the gradient CTA glow.
+      - Do not use emoji in the UI (the ⚡ used in the chart label is an ASCII glyph, OK to keep).
+
+    REACT IMPLEMENTATION NOTES:
+      - Each catalyst card → <CatalystCard sentiment={...} category={...} /> component.
+      - Sentiment determines card accent class (hot / warm / default) and badge class.
+      - The detail drill-down → <StockDetail /> component, conditionally rendered.
+      - Use Chart.js for the line chart in the drill-down with these settings:
+          * Line color: linear gradient #06B6D4 → #10D982.
+          * Fill color: linear gradient #10D982 (0.25 alpha) → transparent.
+          * No grid lines or axes (clean, minimal sparkline look).
+          * tooltip enabled, position: nearest.
+      - Mark the catalyst publish time with chartjs-plugin-annotation:
+          * Vertical dashed line, color var(--warm).
+          * Label "⚡ UBS upgrade" (or whatever catalyst headline summary).
+      - The feed polls /api/catalysts every 60 seconds via setInterval inside useEffect.
+      - Live dot indicator: pulsing animation while connected; if a poll fails, change it to gray.
+      - Format numbers: prices with 2 decimals + thousands separator (Intl.NumberFormat).
+        Percentages with 1–2 decimals + ▲ / ▼ prefix. Use tabular-nums for alignment.
+  -->
+
+</div>
+</body>
+</html>

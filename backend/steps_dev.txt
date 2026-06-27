@@ -1,0 +1,102 @@
+Step 1 — Read everything first (before writing code):
+
+Read backend/main.py fully.
+Read frontend/src/ structure and main entry points.
+Read design_reference.html — both the rendered structure and the HTML comments at the bottom that contain design tokens, sentiment thresholds, and React implementation notes.
+Confirm in your response what you understood before implementing.
+
+
+Step 2 — Repair the yfinance breakage:
+
+Remove the broken yf.pdr_read.requests_session.timeout = 10 line.
+Audit every yfinance call in main.py for compatibility with yfinance 1.2.0 (.info, .history(), .news, return-data shapes — many changed between versions). Fix any incompatibility.
+Pin yfinance==1.2.0 in requirements.txt.
+
+
+Step 3 — Build the multi-provider data layer:
+Create backend/providers/ with these files, each exposing a uniform interface:
+
+__init__.py
+base.py — abstract base class DataProvider with methods: get_quote(symbol), get_news(symbol=None), get_fundamentals(symbol), health_check().
+finnhub_client.py — implements DataProvider using the finnhub-python package. Key from os.getenv("FINNHUB_API_KEY").
+alpha_vantage_client.py — uses httpx to call Alpha Vantage REST. Key from os.getenv("ALPHA_VANTAGE_API_KEY"). Focus: NEWS_SENTIMENT endpoint.
+yfinance_client.py — wraps yfinance for fundamentals only.
+
+Install and pin in requirements.txt: python-dotenv, httpx, finnhub-python, pytest, pytest-asyncio, pytest-mock.
+Add .env.example with:
+FINNHUB_API_KEY=your_finnhub_key_here
+ALPHA_VANTAGE_API_KEY=your_alpha_vantage_key_here
+Load .env at app startup via python-dotenv.
+Caching: Implement an in-memory TTL cache module backend/cache.py with per-key TTLs. Use:
+
+60 seconds for Finnhub quotes and news.
+3600 seconds (1 hour) for Alpha Vantage (free tier is only 25 req/day — be aggressive with caching).
+300 seconds (5 minutes) for yfinance fundamentals.
+
+Error handling principles (apply throughout):
+
+Each external call wrapped in try/except.
+Each field individually safe — a missing field returns null, never crashes the whole response.
+If a provider is down, the response still returns whatever the other providers gave, with a "provider_status" field noting which provider failed.
+Never expose API keys or stack traces to the client — log server-side, return generic error to client.
+
+
+Step 4 — Backend endpoints:
+All endpoints return JSON with this shape: {"data": ..., "provider_status": {"finnhub": "ok"|"error", "alpha_vantage": "ok"|"error"|"skipped", "yfinance": "ok"|"error"}}.
+
+GET /api/health — pings all three providers, returns per-provider status, response times, and overall "status": "ok"|"degraded"|"down". Returns HTTP 200 even when degraded (200 = the API itself is reachable; the provider status field tells the truth about underlying providers).
+GET /api/catalysts?lookback_hours=2&min_sentiment=0.3&limit=20 — main endpoint. Fetches general market news from Finnhub, filters to positive sentiment within the window, groups by ticker, enriches each ticker with quote (Finnhub) + fundamentals (yfinance). Returns sorted by sentiment descending.
+GET /api/stock/{symbol}/news?include_sentiment=true — company news via Finnhub /company-news, optionally enriched with Alpha Vantage sentiment scores. Parse defensively, return {"news": []} on total failure.
+GET /api/stock/{symbol}/analysis — combined day-trade + long-term metrics. Day-trade: current price, open, day high/low, previous close, intraday %, volume vs average (Finnhub). Long-term: P/E, market cap, 52w high/low, dividend yield, analyst target, YTD % (yfinance).
+GET /api/stock/{symbol}/history?period={period} — periods 1d, 5d, 1mo, 3mo, 6mo, 1y via yfinance.
+
+
+Step 5 — Tests (pytest):
+Create backend/tests/ with:
+
+conftest.py — pytest fixtures: a FastAPI TestClient, mocked provider classes (do NOT hit real APIs in tests).
+test_providers.py — each provider can be instantiated; each handles a missing API key gracefully (returns degraded status, doesn't crash); each handles network timeouts; each handles malformed responses.
+test_endpoints.py — every endpoint returns HTTP 200 with the expected JSON shape; every endpoint handles a missing/invalid ticker gracefully; every endpoint handles a degraded provider (mock one provider to fail, others should still respond); the catalysts endpoint correctly filters by sentiment threshold; the cache works (second identical call within TTL doesn't re-hit the provider — assert via mock call_count).
+test_cache.py — cache returns cached value within TTL, expires after TTL, handles concurrent access.
+
+Add pytest.ini at the backend root with asyncio_mode = auto and testpaths = tests.
+The full suite must pass via cd backend && pytest -v before declaring success.
+
+Step 6 — Frontend implementation:
+Read design_reference.html first. Reproduce its visual design in proper React components. Do NOT copy the HTML file into the React project — use it as a reference for layout, colors, typography, spacing, and component structure.
+Component structure in frontend/src/:
+
+App.jsx — top-level layout, holds the global health-check state and renders either <StartupHealthCheck /> or the main dashboard.
+components/StartupHealthCheck.jsx — shown on app load. Calls /api/health. Shows a clean loading state, then either transitions to the dashboard (if status: ok or degraded with at least Finnhub working) or shows an error screen with a Retry button. Match the dark theme from design_reference.html.
+components/CatalystFeed.jsx — top-level feed. Polls /api/catalysts every 60 seconds via setInterval inside useEffect. Shows the "Live · updated HH:MM" indicator with the pulsing dot from the design reference. Has the filter chips (visual-only for now). Renders a list of <CatalystCard /> components.
+components/CatalystCard.jsx — single catalyst card. Receives one catalyst object as props. Applies the sentiment class (hot / warm / default) based on sentiment score thresholds from the design reference (≥0.7 / 0.3–0.7 / <0.3). Renders the inline stats bar. "View details" button sets the selected ticker in parent state; "Track stock" button is a placeholder for now (just logs to console).
+components/StockDetail.jsx — drill-down panel shown when a ticker is selected. Period tabs (1D/5D/1M/3M/6M/1Y) that re-fetch /api/stock/{symbol}/history?period=.... Chart.js line chart with the cyan→green gradient stroke and the vertical amber dashed line marking the catalyst publish time (use chartjs-plugin-annotation — install it). Two-column metrics grid for Day-trade view and Long-term view. News list below with sentiment-colored left borders.
+components/ProviderStatusBadge.jsx — small unobtrusive footer/header element showing which providers are currently degraded (only visible if at least one is degraded — invisible when all OK).
+
+Styling approach: create a single frontend/src/styles/theme.css with all the CSS variables from design_reference.html. Each component imports its own scoped CSS file (CSS modules or plain CSS — match the existing project convention; check what's already used).
+Number formatting (apply everywhere prices/percents are shown):
+
+Prices: Intl.NumberFormat('en-US', {style: 'currency', currency: 'USD', minimumFractionDigits: 2, maximumFractionDigits: 2}).
+Percentages: (value).toFixed(2) + '%' with ▲ or ▼ prefix.
+Use CSS font-variant-numeric: tabular-nums; everywhere numbers are displayed.
+
+Loading and error states for every fetch: never show a blank screen. Skeleton or spinner during load, friendly error message on failure.
+
+Step 7 — Final verification (you must do all of these and report results):
+
+Run cd backend && pytest -v — paste the output. Must pass.
+Start the backend: cd backend && source venv/bin/activate && python main.py — confirm it starts without errors.
+curl http://localhost:8000/api/health — paste the response. Must return a JSON with per-provider status.
+curl http://localhost:8000/api/catalysts — paste the response. Even if it returns empty data (no current catalysts), the response shape must be valid.
+Start the frontend: cd frontend && npm run dev. Confirm it launches.
+Manually verify in the browser that: the health check shows up first; then the dashboard loads; the catalyst feed renders cards (or a friendly empty state if no catalysts right now); clicking a card opens the detail view.
+
+At the end, report:
+
+A list of all files created and modified.
+The full pytest output.
+The output of the two curl commands.
+Any provider that failed and why (e.g. "Alpha Vantage skipped — no API key in .env").
+Exact commands needed to run the app from a fresh checkout.
+
+Implement everything now.
