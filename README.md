@@ -6,6 +6,7 @@ A full-stack stock market dashboard that tracks a watchlist of companies, surfac
 
 - **Backend**: FastAPI (Python), [yfinance](https://github.com/ranaroussi/yfinance) for market data
 - **Frontend**: React + Vite, axios, Chart.js (`react-chartjs-2`)
+- **TradingView integration**: MCP server (`.mcp.json`) for reading/controlling a live TradingView Desktop chart
 
 ## Features
 
@@ -22,6 +23,7 @@ backend/
   cache.py              # simple in-memory cache helper
   watchlist.csv         # editable list of tracked companies (name, ticker)
   providers/            # alternate data provider clients (yfinance, finnhub, alpha vantage)
+  strategy_advisor.py    # CLI that ranks watchlist stocks from live data
   requirements.txt
 frontend/
   src/
@@ -32,6 +34,10 @@ frontend/
       StockDetail.jsx       # per-stock chart + metrics + news modal
       ProviderStatusBadge.jsx
     styles/theme.css       # design tokens and shared component styles
+sim_monitor.py         # portfolio stop-loss/momentum monitor (reads prices from the backend)
+sim_notify.py           # email (Resend), WhatsApp, ntfy, and macOS notification senders
+.sim_config             # credentials for sim_notify.py (gitignored, not committed)
+.mcp.json               # registers the TradingView MCP server
 ```
 
 ## Running locally
@@ -71,6 +77,42 @@ Then open http://localhost:5173. The frontend expects the backend at `http://loc
 ## Editing the watchlist
 
 Edit `backend/watchlist.csv` (columns: `name,ticker`) to change which companies appear on the Dashboard. Restart the backend to pick up changes.
+
+## TradingView MCP
+
+`.mcp.json` registers a TradingView MCP server, giving an MCP-aware AI assistant tools to read and control a live TradingView Desktop chart (symbols, indicators, drawings, Pine Script, screenshots).
+
+TradingView Desktop must be launched with Chrome DevTools Protocol enabled, since opening it normally does not expose this:
+
+```bash
+killall TradingView 2>/dev/null
+/Applications/TradingView.app/Contents/MacOS/TradingView --remote-debugging-port=9222
+```
+
+Verify it's reachable:
+
+```bash
+curl -s http://localhost:9222/json/version
+```
+
+## Portfolio monitor (`sim_monitor.py`)
+
+A standalone script (independent of the dashboard) that checks a hardcoded set of positions against stop-loss/target levels and day-over-day moves, using prices from the backend's `/api/stock/{symbol}` endpoint. On alert conditions (or as a daily summary) it sends notifications via macOS, email (Resend), WhatsApp (CallMeBot), and ntfy.sh — configured through `.sim_config` (gitignored; copy `.sim_config` and fill in your own credentials, never commit it).
+
+```bash
+./venv/bin/python sim_monitor.py   # run from backend/, or point PYTHONPATH at it
+```
+
+Intended to run on a schedule (e.g. a weekday-evening cron job).
+
+## Strategy advisor (`backend/strategy_advisor.py`)
+
+CLI that fetches live quotes, analysis metrics, and catalyst news from the running backend and prints a ranked, plain-English report of which watchlist stocks look most interesting right now. Rule-based heuristic, not financial advice.
+
+```bash
+cd backend
+./venv/bin/python strategy_advisor.py --top 5
+```
 
 ## Notes
 
