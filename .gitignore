@@ -51,6 +51,9 @@ frontend/.env.local
 frontend/.env.*.local
 frontend/.eslintcache
 
+# Secrets
+.sim_config
+
 # OS
 .DS_Store
 Thumbs.db
