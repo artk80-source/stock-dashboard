@@ -104,7 +104,37 @@
       "margin": false,
       "rsi": 29.35,
       "macd_h": -6.4702,
+      "signal_type": "rsi_only",
+      "spy_rsi": 52.22,
+      "regime": "neutral",
       "note": "Auto-trade \u2014 RSI<30 signal"
     }
-  ]
+  ],
+  "learning": {
+    "rsi_threshold": 30,
+    "stop_pct": 0.08,
+    "cash_per_pos": 15000,
+    "margin_per_pos": 25000,
+    "stats": {
+      "total_closed": 0,
+      "wins": 0,
+      "losses": 0,
+      "avg_gain_pct": 0.0,
+      "avg_loss_pct": 0.0,
+      "avg_days_held": 0.0,
+      "stop_loss_count": 0,
+      "target_count": 0,
+      "by_signal": {
+        "rsi_only":       {"count": 0, "wins": 0, "total_gain": 0.0},
+        "double_confirm": {"count": 0, "wins": 0, "total_gain": 0.0}
+      },
+      "by_regime": {
+        "bear":    {"count": 0, "wins": 0, "total_gain": 0.0},
+        "neutral": {"count": 0, "wins": 0, "total_gain": 0.0},
+        "bull":    {"count": 0, "wins": 0, "total_gain": 0.0}
+      }
+    },
+    "adjustments": [],
+    "last_updated": "2026-06-30"
+  }
 }

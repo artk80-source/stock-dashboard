@@ -47,10 +47,52 @@ AVOID         = {
     "MRVL",   # -10% upside, up 221% YTD
 }
 MAX_POSITIONS = 8
-CASH_PER_POS  = 15_000    # max cash per new position
-MARGIN_PER_POS= 25_000    # max margin per new position
-STOP_WARN_PCT = 0.04      # warn when within 4% of stop
-STRONG_MOVE   = 0.05      # alert on ±5% single-day move
+STOP_WARN_PCT = 0.04
+STRONG_MOVE   = 0.05
+
+# ── Learning defaults (overridden by ledger["learning"] at runtime) ──
+LEARNING_DEFAULTS = {
+    "rsi_threshold":       30,      # buy when RSI < this
+    "stop_pct":            0.08,    # stop-loss distance from entry
+    "cash_per_pos":        15_000,  # max cash per position
+    "margin_per_pos":      25_000,  # max margin per position
+    "stats": {
+        "total_closed": 0, "wins": 0, "losses": 0,
+        "avg_gain_pct": 0.0, "avg_loss_pct": 0.0, "avg_days_held": 0.0,
+        "stop_loss_count": 0, "target_count": 0,
+        "by_signal": {
+            "rsi_only":       {"count": 0, "wins": 0, "total_gain": 0.0},
+            "double_confirm": {"count": 0, "wins": 0, "total_gain": 0.0},
+        },
+        "by_regime": {
+            "bear":    {"count": 0, "wins": 0, "total_gain": 0.0},
+            "neutral": {"count": 0, "wins": 0, "total_gain": 0.0},
+            "bull":    {"count": 0, "wins": 0, "total_gain": 0.0},
+        },
+    },
+    "adjustments": [],
+    "last_updated": None,
+}
+
+def ensure_learning(ledger):
+    """Initialise learning section if missing or incomplete."""
+    if "learning" not in ledger:
+        ledger["learning"] = json.loads(json.dumps(LEARNING_DEFAULTS))
+        log("[LEARN] Initialised learning section")
+    # back-fill any missing keys from LEARNING_DEFAULTS
+    for k, v in LEARNING_DEFAULTS.items():
+        if k not in ledger["learning"]:
+            ledger["learning"][k] = v
+
+def get_thresholds(ledger):
+    """Return adaptive thresholds from learning section (or defaults)."""
+    L = ledger.get("learning", LEARNING_DEFAULTS)
+    return {
+        "rsi":    L.get("rsi_threshold",   30),
+        "stop":   L.get("stop_pct",        0.08),
+        "cash":   L.get("cash_per_pos",    15_000),
+        "margin": L.get("margin_per_pos",  25_000),
+    }
 
 # ── Logging ───────────────────────────────────────────────────
 def log(msg):
@@ -128,13 +170,14 @@ def get_price(ticker):
         return None
 
 # ── Execute a paper buy ───────────────────────────────────────
-def execute_buy(ledger, ticker, price, indicators, using_margin=False):
+def execute_buy(ledger, ticker, price, indicators, using_margin=False, spy_rsi=None):
+    th = get_thresholds(ledger)
     if using_margin:
         deployed = sum(p["shares"] * price for p in ledger["positions"].values())
         avail    = ledger["equity"] * ledger["leverage"] - deployed
-        to_spend = min(MARGIN_PER_POS, max(avail, 0))
+        to_spend = min(th["margin"], max(avail, 0))
     else:
-        to_spend = min(CASH_PER_POS, ledger["cash"])
+        to_spend = min(th["cash"], ledger["cash"])
 
     if to_spend < 1000:
         log(f"[TRADE] {ticker} — insufficient funds (${to_spend:.0f})")
@@ -142,9 +185,15 @@ def execute_buy(ledger, ticker, price, indicators, using_margin=False):
 
     shares  = int(to_spend / price)
     cost    = round(shares * price, 2)
-    stop    = round(price * 0.92, 2)
+    stop    = round(price * (1 - th["stop"]), 2)
     pd      = get_price(ticker)
     target  = pd["analyst_target"] if pd and pd["analyst_target"] else round(price * 1.40, 2)
+
+    signal_type = "double_confirm" if (indicators["histogram"] > 0) else "rsi_only"
+    if spy_rsi is not None:
+        regime = "bear" if spy_rsi < 40 else ("bull" if spy_rsi > 60 else "neutral")
+    else:
+        regime = "unknown"
 
     ledger["positions"][ticker] = {
         "name": ticker, "entry": price, "stop": stop,
@@ -153,29 +202,249 @@ def execute_buy(ledger, ticker, price, indicators, using_margin=False):
     if not using_margin:
         ledger["cash"] = round(ledger["cash"] - cost, 2)
 
-    tr = {"date": datetime.date.today().isoformat(), "action": "BUY",
-          "ticker": ticker, "shares": shares, "price": price,
-          "cost": cost, "margin": using_margin,
-          "rsi": indicators["rsi"], "macd_h": indicators["histogram"]}
+    tr = {
+        "date":        datetime.date.today().isoformat(),
+        "action":      "BUY",
+        "ticker":      ticker,
+        "shares":      shares,
+        "price":       price,
+        "cost":        cost,
+        "margin":      using_margin,
+        "rsi":         indicators["rsi"],
+        "macd_h":      indicators["histogram"],
+        "signal_type": signal_type,
+        "spy_rsi":     spy_rsi,
+        "regime":      regime,
+    }
     ledger["trades"].append(tr)
     mode = "MARGIN" if using_margin else "CASH"
-    log(f"[TRADE] BUY {shares}x {ticker} @ ${price:.2f} = ${cost:.2f} [{mode}] RSI={indicators['rsi']}")
+    log(f"[TRADE] BUY {shares}x {ticker} @ ${price:.2f} = ${cost:.2f} [{mode}] RSI={indicators['rsi']} signal={signal_type} regime={regime}")
     return tr
 
 # ── Execute a paper sell ──────────────────────────────────────
-def execute_sell(ledger, ticker, price, reason):
+def execute_sell(ledger, ticker, price, reason, exit_indicators=None):
     pos      = ledger["positions"].pop(ticker)
     shares   = pos["shares"]
     proceeds = round(shares * price, 2)
-    pnl      = round(proceeds - shares * pos["entry"], 2)
+    cost     = shares * pos["entry"]
+    pnl      = round(proceeds - cost, 2)
+    pnl_pct  = round(pnl / cost * 100, 2)
     ledger["cash"] = round(ledger["cash"] + proceeds, 2)
 
-    tr = {"date": datetime.date.today().isoformat(), "action": "SELL",
-          "ticker": ticker, "shares": shares, "price": price,
-          "proceeds": proceeds, "pnl": pnl, "reason": reason}
+    # Find the matching BUY trade to get learning context
+    buy_tr = next(
+        (t for t in reversed(ledger["trades"])
+         if t["action"] == "BUY" and t["ticker"] == ticker), None
+    )
+    entry_date  = buy_tr["date"] if buy_tr else datetime.date.today().isoformat()
+    signal_type = buy_tr.get("signal_type", "rsi_only") if buy_tr else "rsi_only"
+    regime      = buy_tr.get("regime", "unknown") if buy_tr else "unknown"
+    entry_rsi   = buy_tr.get("rsi") if buy_tr else None
+    days_held   = (datetime.date.today() - datetime.date.fromisoformat(entry_date)).days
+
+    tr = {
+        "date":        datetime.date.today().isoformat(),
+        "action":      "SELL",
+        "ticker":      ticker,
+        "shares":      shares,
+        "price":       price,
+        "proceeds":    proceeds,
+        "pnl":         pnl,
+        "pnl_pct":     pnl_pct,
+        "reason":      reason,
+        "days_held":   days_held,
+        "entry_rsi":   entry_rsi,
+        "signal_type": signal_type,
+        "regime":      regime,
+        "exit_rsi":    exit_indicators["rsi"] if exit_indicators else None,
+        "exit_macd_h": exit_indicators["histogram"] if exit_indicators else None,
+    }
     ledger["trades"].append(tr)
-    log(f"[TRADE] SELL {shares}x {ticker} @ ${price:.2f} P&L=${pnl:+.2f} [{reason}]")
+    log(f"[TRADE] SELL {shares}x {ticker} @ ${price:.2f} P&L=${pnl:+.2f} ({pnl_pct:+.1f}%) [{reason}] held={days_held}d")
+
+    update_learning(ledger, tr)
     return tr
+
+# ── Self-learning engine ──────────────────────────────────────
+def update_learning(ledger, sell_trade):
+    """Update stats from a closed trade and adapt thresholds if evidence warrants it."""
+    ensure_learning(ledger)
+    L     = ledger["learning"]
+    stats = L["stats"]
+    pnl   = sell_trade["pnl_pct"]
+    won   = pnl > 0
+    sig   = sell_trade.get("signal_type", "rsi_only")
+    regime= sell_trade.get("regime", "neutral")
+    days  = sell_trade.get("days_held", 0)
+
+    # ── Update rolling stats ───────────────────────────────────
+    n = stats["total_closed"]
+    stats["total_closed"] += 1
+    if won:
+        stats["wins"] += 1
+        stats["avg_gain_pct"] = (stats["avg_gain_pct"] * sum(
+            1 for t in ledger["trades"] if t["action"]=="SELL" and t.get("pnl_pct",0) > 0
+        ) + pnl) / (stats["wins"])
+    else:
+        stats["losses"] += 1
+        stats["avg_loss_pct"] = (stats["avg_loss_pct"] * (stats["losses"]-1) + pnl) / stats["losses"]
+    stats["avg_days_held"] = (stats["avg_days_held"] * n + days) / (n + 1)
+    if sell_trade.get("reason") == "stop_loss":
+        stats["stop_loss_count"] += 1
+    elif sell_trade.get("reason") == "target":
+        stats["target_count"] += 1
+
+    # Signal-type breakdown
+    if sig in stats["by_signal"]:
+        g = stats["by_signal"][sig]
+        g["count"] += 1
+        if won: g["wins"] += 1
+        g["total_gain"] = round(g["total_gain"] + pnl, 2)
+
+    # Market-regime breakdown
+    if regime in stats["by_regime"]:
+        r = stats["by_regime"][regime]
+        r["count"] += 1
+        if won: r["wins"] += 1
+        r["total_gain"] = round(r["total_gain"] + pnl, 2)
+
+    L["last_updated"] = datetime.date.today().isoformat()
+
+    # ── Adaptive threshold logic (needs ≥5 closed trades) ─────
+    if stats["total_closed"] < 5:
+        log(f"[LEARN] {stats['total_closed']}/5 closed trades needed before adapting thresholds")
+        return
+
+    adj = []
+    win_rate = stats["wins"] / stats["total_closed"]
+
+    # Rule 1 — RSI threshold: tighten if rsi_only win rate is weak
+    rsi_only = stats["by_signal"]["rsi_only"]
+    if rsi_only["count"] >= 3:
+        rsi_wr = rsi_only["wins"] / rsi_only["count"]
+        if rsi_wr < 0.40 and L["rsi_threshold"] > 26:
+            old = L["rsi_threshold"]
+            L["rsi_threshold"] -= 1
+            msg = f"RSI threshold {old} → {L['rsi_threshold']} (rsi_only win rate {rsi_wr:.0%} < 40%)"
+            adj.append(msg); log(f"[LEARN] {msg}")
+        elif rsi_wr > 0.75 and L["rsi_threshold"] < 32:
+            old = L["rsi_threshold"]
+            L["rsi_threshold"] += 1
+            msg = f"RSI threshold {old} → {L['rsi_threshold']} (rsi_only win rate {rsi_wr:.0%} > 75% — easing entry)"
+            adj.append(msg); log(f"[LEARN] {msg}")
+
+    # Rule 2 — Stop-loss: widen if >40% of exits are stop-losses
+    if stats["total_closed"] >= 8:
+        stop_rate = stats["stop_loss_count"] / stats["total_closed"]
+        if stop_rate > 0.40 and L["stop_pct"] < 0.12:
+            old = L["stop_pct"]
+            L["stop_pct"] = round(L["stop_pct"] + 0.005, 3)
+            msg = f"Stop-loss {old:.1%} → {L['stop_pct']:.1%} ({stop_rate:.0%} of closes were stops)"
+            adj.append(msg); log(f"[LEARN] {msg}")
+        elif stop_rate < 0.15 and L["stop_pct"] > 0.06:
+            old = L["stop_pct"]
+            L["stop_pct"] = round(L["stop_pct"] - 0.005, 3)
+            msg = f"Stop-loss {old:.1%} → {L['stop_pct']:.1%} (only {stop_rate:.0%} stopped out — tightening)"
+            adj.append(msg); log(f"[LEARN] {msg}")
+
+    # Rule 3 — Position size: scale with win rate (±$2k, bounded $10k–$22k cash)
+    if stats["total_closed"] >= 10:
+        if win_rate > 0.70 and L["cash_per_pos"] < 22_000:
+            L["cash_per_pos"]   += 2_000
+            L["margin_per_pos"] += 3_000
+            msg = f"Position size ↑ cash=${L['cash_per_pos']:,} margin=${L['margin_per_pos']:,} (win rate {win_rate:.0%})"
+            adj.append(msg); log(f"[LEARN] {msg}")
+        elif win_rate < 0.40 and L["cash_per_pos"] > 10_000:
+            L["cash_per_pos"]   -= 2_000
+            L["margin_per_pos"] -= 3_000
+            msg = f"Position size ↓ cash=${L['cash_per_pos']:,} margin=${L['margin_per_pos']:,} (win rate {win_rate:.0%})"
+            adj.append(msg); log(f"[LEARN] {msg}")
+
+    if adj:
+        L["adjustments"].append({
+            "date": datetime.date.today().isoformat(),
+            "changes": adj,
+            "win_rate": round(win_rate, 3),
+            "total_closed": stats["total_closed"],
+        })
+
+def build_learning_summary(ledger):
+    """Return (ntfy_lines, html_block) for the nightly report."""
+    ensure_learning(ledger)
+    L     = ledger["learning"]
+    stats = L["stats"]
+    n     = stats["total_closed"]
+
+    if n == 0:
+        ntfy = ["", "LEARNING ENGINE", "  No closed trades yet — building baseline..."]
+        html = "<p style='color:#64748b;font-style:italic;'>No closed trades yet — learning starts after first sell.</p>"
+        return ntfy, html
+
+    win_rate = stats["wins"] / n
+    conf     = "🔴 LOW" if n < 5 else ("🟡 MEDIUM" if n < 15 else "🟢 HIGH")
+    conf_note= f"({n} trades)" if n < 15 else f"({n} trades — statistically reliable)"
+
+    sig_lines = []
+    for sig, label in [("rsi_only","RSI-only"), ("double_confirm","Double-confirm")]:
+        g = stats["by_signal"][sig]
+        if g["count"] > 0:
+            wr  = g["wins"] / g["count"]
+            avg = g["total_gain"] / g["count"]
+            sig_lines.append(f"  {label}: {g['wins']}/{g['count']} wins ({wr:.0%}) avg {avg:+.1f}%")
+
+    reg_lines = []
+    for reg, label in [("bull","Bull (SPY>60)"), ("neutral","Neutral"), ("bear","Bear (SPY<40)")]:
+        r = stats["by_regime"][reg]
+        if r["count"] > 0:
+            wr  = r["wins"] / r["count"]
+            avg = r["total_gain"] / r["count"]
+            reg_lines.append(f"  {label}: {r['wins']}/{r['count']} ({wr:.0%}) avg {avg:+.1f}%")
+
+    last_adj = ""
+    if L["adjustments"]:
+        a = L["adjustments"][-1]
+        last_adj = f"Last adapt ({a['date']}): " + "; ".join(a["changes"])
+
+    ntfy = [
+        "", "LEARNING ENGINE",
+        f"  Confidence: {conf} {conf_note}",
+        f"  Win rate: {stats['wins']}/{n} ({win_rate:.0%})  |  Avg gain: {stats['avg_gain_pct']:+.1f}%  |  Avg loss: {stats['avg_loss_pct']:+.1f}%",
+        f"  Avg hold: {stats['avg_days_held']:.0f}d  |  Stops: {stats['stop_loss_count']}  |  Targets: {stats['target_count']}",
+        f"  Thresholds → RSI<{L['rsi_threshold']} | Stop={L['stop_pct']:.1%} | Cash/pos=${L['cash_per_pos']:,} | Margin/pos=${L['margin_per_pos']:,}",
+    ] + sig_lines + reg_lines
+    if last_adj:
+        ntfy.append(f"  ⚙️  {last_adj}")
+
+    html = f"""
+<div style="background:#f0f9ff;border-left:4px solid #0ea5e9;border-radius:6px;padding:16px 20px;margin-top:20px;">
+  <h3 style="margin:0 0 10px;color:#0369a1;font-size:15px;">🧠 Learning Engine</h3>
+  <div style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:10px;">
+    <span><b>Confidence:</b> {conf} {conf_note}</span>
+    <span><b>Win rate:</b> {stats['wins']}/{n} ({win_rate:.0%})</span>
+    <span><b>Avg gain:</b> {stats['avg_gain_pct']:+.1f}%</span>
+    <span><b>Avg loss:</b> {stats['avg_loss_pct']:+.1f}%</span>
+    <span><b>Avg hold:</b> {stats['avg_days_held']:.0f} days</span>
+  </div>
+  <table style="width:100%;font-size:13px;border-collapse:collapse;">
+    <tr style="background:#e0f2fe;">
+      <th style="padding:6px 10px;text-align:left;">Signal type</th>
+      <th style="padding:6px 10px;text-align:center;">Trades</th>
+      <th style="padding:6px 10px;text-align:center;">Win rate</th>
+      <th style="padding:6px 10px;text-align:right;">Avg P&amp;L</th>
+    </tr>
+    {"".join(
+        f"<tr><td style='padding:5px 10px;'>{label}</td><td style='padding:5px 10px;text-align:center;'>{stats['by_signal'][sig]['count']}</td>"
+        f"<td style='padding:5px 10px;text-align:center;'>{(stats['by_signal'][sig]['wins']/stats['by_signal'][sig]['count']):.0%}" if stats['by_signal'][sig]['count'] else
+        f"<tr><td style='padding:5px 10px;'>{label}</td><td colspan='3' style='padding:5px 10px;color:#94a3b8;'>no data</td>"
+        for sig, label in [("rsi_only","RSI-only"), ("double_confirm","Double-confirm")]
+    )}
+  </table>
+  <div style="margin-top:10px;padding-top:10px;border-top:1px solid #bae6fd;font-size:12px;color:#0369a1;">
+    <b>Active thresholds:</b> RSI&lt;{L['rsi_threshold']} | Stop={L['stop_pct']:.1%} | Cash/pos=${L['cash_per_pos']:,} | Margin/pos=${L['margin_per_pos']:,}
+    {"<br><b>Last adjustment:</b> " + last_adj if last_adj else ""}
+  </div>
+</div>"""
+    return ntfy, html
 
 # ── Dynamic leverage decision ─────────────────────────────────
 def decide_leverage(position_indicators, ledger):
@@ -418,6 +687,7 @@ def run():
         sys.exit(1)
 
     ledger          = load_ledger()
+    ensure_learning(ledger)          # initialise learning block if first run
     alerts          = []
     new_trades      = []
     positions_data  = {}
@@ -450,9 +720,9 @@ def run():
         log(f"{ticker}  ${price:.2f}  day:{day_pct:+.2f}%  P&L:{pnl_pct:+.2f}%  stop_dist:{dist_stop:.1f}%"
             + (f"  RSI={ind['rsi']} MACD_h={ind['histogram']}" if ind else ""))
 
-        # Stop-loss hit → auto-sell
+        # Stop-loss hit → auto-sell (pass exit indicators for learning)
         if price <= stop:
-            tr = execute_sell(ledger, ticker, price, "STOP-LOSS")
+            tr = execute_sell(ledger, ticker, price, "STOP-LOSS", exit_indicators=ind)
             new_trades.append(tr)
             alerts.append(("🔴 STOP-LOSS", f"{ticker} sold @ ${price:.2f} | P&L: ${tr['pnl']:+.2f}", True))
             portfolio_value += tr["proceeds"]
@@ -475,9 +745,13 @@ def run():
     ledger["leverage"] = new_leverage
 
     # ── 2. Scan watchlist for buy signals ─────────────────────
+    # Current SPY RSI for regime tagging on buys
+    spy_rsi_now = market_indicators.get("SPY", {}).get("rsi")
+    th          = get_thresholds(ledger)   # adaptive thresholds from learning
+
     slots = MAX_POSITIONS - len(ledger["positions"])
     if slots > 0:
-        log(f"Scanning watchlist — {slots} slot(s) open")
+        log(f"Scanning watchlist — {slots} slot(s) open (RSI threshold: <{th['rsi']})")
         for ticker in WATCHLIST:
             if ticker in AVOID or ticker in ledger["positions"]:
                 continue
@@ -489,20 +763,20 @@ def run():
                 continue
             log(f"  {ticker}: RSI={ind['rsi']} MACD_hist={ind['histogram']}")
 
-            if ind["rsi"] < 30:
+            if ind["rsi"] < th["rsi"]:          # use adaptive RSI threshold
                 pd = get_price(ticker)
                 if not pd or not pd["price"]:
                     continue
                 price = pd["price"]
-                # Double-confirm (RSI<30 + MACD hist>0) → margin buy regardless of
-                # portfolio leverage setting. Single confirm → cash only.
+                # Double-confirm (RSI<threshold + MACD hist>0) → margin buy
+                # Single confirm → cash only
                 double_confirm = ind["histogram"] > 0
-                use_margin     = double_confirm and ledger["cash"] < CASH_PER_POS
+                use_margin     = double_confirm and ledger["cash"] < th["cash"]
                 if use_margin:
-                    # Temporarily floor leverage at 1.5x for this confirmed opportunity
                     orig_leverage       = ledger["leverage"]
                     ledger["leverage"]  = max(ledger["leverage"], 1.5)
-                tr = execute_buy(ledger, ticker, price, ind, using_margin=use_margin)
+                tr = execute_buy(ledger, ticker, price, ind, using_margin=use_margin,
+                                 spy_rsi=spy_rsi_now)
                 if use_margin:
                     ledger["leverage"] = orig_leverage  # restore after buy
                 if tr:
@@ -549,13 +823,19 @@ def run():
     else:
         notify_macos("📊 Sim Update", f"${portfolio_value:,.0f} ({total_pnl_pct:+.2f}%)")
 
+    # Build learning summary
+    learn_ntfy, learn_html = build_learning_summary(ledger)
+
     subject    = f"📊 Tech Sim — ${portfolio_value:,.0f} ({'+' if total_pnl_pct>=0 else ''}{total_pnl_pct:.2f}%) — {datetime.date.today()}"
     html, plain = build_email_report(positions_data, portfolio_value, ledger["start_value"], alerts)
+    html  += learn_html   # append learning block to email HTML
+    plain += "\n" + "\n".join(learn_ntfy)
     send_email(subject, html, plain)
 
     ntfy_body  = build_ntfy_body(positions_data, portfolio_value, ledger["start_value"],
                                ledger["cash"], ledger["leverage"], alerts, new_trades, lev_reason,
                                market_indicators=market_indicators)
+    ntfy_body += "\n" + "\n".join(learn_ntfy)
     now_str    = datetime.datetime.now().strftime("%b %d %Y %H:%M IDT")
     ntfy_title = f"📊 Close Report | {now_str} | ${portfolio_value:,.0f}"
     ntfy_tag   = "chart_with_upwards_trend" if total_pnl_pct >= 0 else "chart_with_downwards_trend"
