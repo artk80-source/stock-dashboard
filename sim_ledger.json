@@ -1,0 +1,110 @@
+{
+  "positions": {
+    "CRM": {
+      "name": "Salesforce",
+      "entry": 158.37,
+      "stop": 145.7,
+      "target": 249.95,
+      "shares": 157
+    },
+    "ADBE": {
+      "name": "Adobe",
+      "entry": 202.73,
+      "stop": 186.51,
+      "target": 282.27,
+      "shares": 108
+    },
+    "MSFT": {
+      "name": "Microsoft",
+      "entry": 372.97,
+      "stop": 343.13,
+      "target": 561.11,
+      "shares": 67
+    },
+    "NOW": {
+      "name": "ServiceNow",
+      "entry": 98.34,
+      "stop": 90.47,
+      "target": 141.48,
+      "shares": 183
+    },
+    "ORCL": {
+      "name": "ORCL",
+      "entry": 147.76,
+      "stop": 135.94,
+      "target": 252.64,
+      "shares": 69
+    }
+  },
+  "cash": 60.42,
+  "equity": 100000.0,
+  "leverage": 1.0,
+  "start_value": 100000.0,
+  "trades": [
+    {
+      "date": "2026-06-27",
+      "action": "BUY",
+      "ticker": "CRM",
+      "name": "Salesforce",
+      "shares": 157,
+      "price": 158.37,
+      "cost": 24864.09,
+      "margin": false,
+      "rsi": null,
+      "macd_h": null,
+      "note": "Initial position \u2014 manual entry"
+    },
+    {
+      "date": "2026-06-27",
+      "action": "BUY",
+      "ticker": "ADBE",
+      "name": "Adobe",
+      "shares": 108,
+      "price": 202.73,
+      "cost": 21894.84,
+      "margin": false,
+      "rsi": null,
+      "macd_h": null,
+      "note": "Initial position \u2014 manual entry"
+    },
+    {
+      "date": "2026-06-27",
+      "action": "BUY",
+      "ticker": "MSFT",
+      "name": "Microsoft",
+      "shares": 67,
+      "price": 372.97,
+      "cost": 24988.99,
+      "margin": false,
+      "rsi": null,
+      "macd_h": null,
+      "note": "Initial position \u2014 manual entry"
+    },
+    {
+      "date": "2026-06-27",
+      "action": "BUY",
+      "ticker": "NOW",
+      "name": "ServiceNow",
+      "shares": 183,
+      "price": 98.34,
+      "cost": 17996.22,
+      "margin": false,
+      "rsi": null,
+      "macd_h": null,
+      "note": "Initial position \u2014 manual entry"
+    },
+    {
+      "date": "2026-06-30",
+      "action": "BUY",
+      "ticker": "ORCL",
+      "name": "Oracle",
+      "shares": 69,
+      "price": 147.76,
+      "cost": 10195.44,
+      "margin": false,
+      "rsi": 29.35,
+      "macd_h": -6.4702,
+      "note": "Auto-trade \u2014 RSI<30 signal"
+    }
+  ]
+}

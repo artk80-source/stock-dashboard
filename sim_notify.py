@@ -26,7 +26,11 @@ def notify_macos(title, message, urgent=False):
     subprocess.run(["osascript", "-e", script], capture_output=True)
 
 # ── Email via Resend API (no Gmail changes needed) ────────────
-def send_email(subject, html_body, plain_body):
+def send_email(subject, html_body, plain_body, attachments=None):
+    """
+    attachments: list of dicts with keys 'filename' and 'content' (base64 string)
+    e.g. [{"filename": "trades.csv", "content": "<base64>"}]
+    """
     cfg     = load_config()
     to_addr = cfg.get("email", "gmail_address", fallback="").strip()
     api_key = cfg.get("email", "resend_api_key", fallback="").strip()
@@ -36,13 +40,17 @@ def send_email(subject, html_body, plain_body):
         return False
 
     try:
-        payload = json.dumps({
+        body = {
             "from":    "Tech Sim <onboarding@resend.dev>",
             "to":      [to_addr],
             "subject": subject,
             "html":    html_body,
             "text":    plain_body,
-        }).encode("utf-8")
+        }
+        if attachments:
+            body["attachments"] = attachments
+
+        payload = json.dumps(body).encode("utf-8")
 
         req = urllib.request.Request(
             "https://api.resend.com/emails",
@@ -55,7 +63,8 @@ def send_email(subject, html_body, plain_body):
 
         with urllib.request.urlopen(req, timeout=15) as r:
             result = json.loads(r.read())
-        print(f"[EMAIL] Sent via Resend → {to_addr} (id: {result.get('id','?')})")
+        attach_note = f" + {len(attachments)} attachment(s)" if attachments else ""
+        print(f"[EMAIL] Sent via Resend → {to_addr}{attach_note} (id: {result.get('id','?')})")
         return True
     except Exception as e:
         print(f"[EMAIL] Failed: {e}")

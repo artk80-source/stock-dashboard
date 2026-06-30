@@ -1,186 +1,570 @@
 #!/usr/bin/env python3
 """
-Tech Simulation Monitor
-Runs automatically every weekday evening via cron.
-Checks stop-losses, momentum shifts, and major moves.
-Sends macOS notifications if action is needed.
+Tech Simulation Monitor — Auto-Trading Engine
+Runs every weekday at 23:15 IDT (15 min after US market close).
+Reads/writes portfolio state from sim_ledger.json.
+Signals: RSI + MACD calculated from yfinance history.
+Auto-trades: RSI<30 → cash buy | RSI<30 + MACD hist>0 → margin buy
 """
 
-import subprocess
 import json
-import sys
 import datetime
 import os
+import sys
+import urllib.request
+import base64
+import io
+
 sys.path.insert(0, os.path.dirname(__file__))
-from sim_notify import (
-    notify_macos, send_email, send_whatsapp, send_ntfy,
-    build_email_report, build_whatsapp_summary
-)
+from sim_notify import notify_macos, send_email, send_ntfy, build_email_report
 
-# ── Portfolio positions ─────────────────────────────────────
-POSITIONS = {
-    "CRM":  {"entry": 158.37, "stop": 145.70, "target": 251.53, "shares": 157, "name": "Salesforce"},
-    "ADBE": {"entry": 202.73, "stop": 186.51, "target": 282.27, "shares": 108, "name": "Adobe"},
-    "MSFT": {"entry": 372.97, "stop": 343.13, "target": 561.11, "shares": 67,  "name": "Microsoft"},
-    "NOW":  {"entry": 98.34,  "stop": 90.47,  "target": 141.48, "shares": 183, "name": "ServiceNow"},
+LEDGER_PATH   = os.path.join(os.path.dirname(__file__), "sim_ledger.json")
+CONFIG_PATH   = os.path.join(os.path.dirname(__file__), ".sim_config")
+
+WATCHLIST = [
+    # Original 20
+    "NVDA","AVGO","MSFT","AAPL","ORCL","PLTR","ANET","VRT",
+    "MU","AMD","KLAC","LRCX","AMAT","QCOM","NOW","CRWD",
+    "IBM","ADBE","CRM","TXN",
+    # Added June 30 — 8 new approved
+    "SNPS","WDAY","INTU","ADI","NXPI","MSI","AKAM","KEYS",
+    # Added June 30 — 6 on AVOID (above target / overvalued)
+    "CSCO","INTC","CDNS","FTNT","PANW","MRVL",
+    # 3x NASDAQ ETF — buy signal same as stocks (RSI<30)
+    "TQQQ",
+]
+# Market-wide indicators — RSI/MACD reported every night, never auto-bought
+MONITOR_ONLY = {"SPY", "QQQ"}
+AVOID         = {
+    # Original avoids — above analyst target or heavy selling
+    "AMAT","LRCX","KLAC","AMD","TXN",
+    # New avoids — above analyst target or extreme valuation
+    "CSCO",   # +8% upside, up 54% YTD — limited room
+    "INTC",   # -25% upside, no earnings, up 249% YTD
+    "CDNS",   # only +4% upside at PE 87
+    "FTNT",   # -27% upside — 27% above analyst target
+    "PANW",   # -5% upside, PE 286
+    "MRVL",   # -10% upside, up 221% YTD
 }
-CASH = 10255.86
-START_VALUE = 100_000.00
+MAX_POSITIONS = 8
+CASH_PER_POS  = 15_000    # max cash per new position
+MARGIN_PER_POS= 25_000    # max margin per new position
+STOP_WARN_PCT = 0.04      # warn when within 4% of stop
+STRONG_MOVE   = 0.05      # alert on ±5% single-day move
 
-# ── Alert thresholds ────────────────────────────────────────
-STOP_LOSS_WARNING_PCT = 0.04   # Warn when within 4% of stop-loss
-STRONG_MOVE_PCT       = 0.05   # Alert on +/-5% single-day move
-TAKE_PROFIT_PCT       = 0.80   # Alert when 80% of the way to target
-
-# ── Notification helper ─────────────────────────────────────
-def notify(title, message, urgent=False):
-    sound = "Sosumi" if urgent else "default"
-    script = f'''display notification "{message}" with title "{title}" sound name "{sound}"'''
-    subprocess.run(["osascript", "-e", script], capture_output=True)
-    log(f"[NOTIFY] {title}: {message}")
-
+# ── Logging ───────────────────────────────────────────────────
 def log(msg):
-    ts = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    ts   = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
     line = f"{ts}  {msg}"
     print(line)
     with open("/tmp/sim_monitor.log", "a") as f:
         f.write(line + "\n")
 
-# ── Fetch price from backend ────────────────────────────────
+# ── Ledger helpers ────────────────────────────────────────────
+def load_ledger():
+    with open(LEDGER_PATH) as f:
+        return json.load(f)
+
+def save_ledger(ledger):
+    with open(LEDGER_PATH, "w") as f:
+        json.dump(ledger, f, indent=2)
+
+# ── Technical indicators from yfinance history ────────────────
+def _ema(values, period):
+    k      = 2 / (period + 1)
+    result = [sum(values[:period]) / period]
+    for v in values[period:]:
+        result.append(v * k + result[-1] * (1 - k))
+    return result
+
+def calc_indicators(ticker):
+    try:
+        import yfinance as yf
+        closes = yf.Ticker(ticker).history(period="4mo")["Close"].tolist()
+        if len(closes) < 40:
+            return None
+
+        # RSI(14) — Wilder smoothing
+        deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
+        gains  = [max(d, 0) for d in deltas]
+        losses = [max(-d, 0) for d in deltas]
+        avg_g  = sum(gains[:14]) / 14
+        avg_l  = sum(losses[:14]) / 14
+        for i in range(14, len(gains)):
+            avg_g = (avg_g * 13 + gains[i]) / 14
+            avg_l = (avg_l * 13 + losses[i]) / 14
+        rsi = 100 if avg_l == 0 else round(100 - (100 / (1 + avg_g / avg_l)), 2)
+
+        # MACD(12,26,9)
+        e12       = _ema(closes, 12)
+        e26       = _ema(closes, 26)
+        macd_line = [a - b for a, b in zip(e12[14:], e26)]
+        signal    = _ema(macd_line, 9)
+        histogram = round(macd_line[-1] - signal[-1], 4)
+
+        return {"rsi": rsi, "macd": round(macd_line[-1], 4),
+                "signal": round(signal[-1], 4), "histogram": histogram}
+    except Exception as e:
+        log(f"[INDICATOR] {ticker} failed: {e}")
+        return None
+
+# ── Fetch live price from backend ─────────────────────────────
 def get_price(ticker):
     try:
-        import urllib.request
         url = f"http://localhost:8000/api/stock/{ticker}/analysis"
         with urllib.request.urlopen(url, timeout=8) as r:
             data = json.loads(r.read())
         day = data.get("data", {}).get("day_trade", {})
+        lt  = data.get("data", {}).get("long_term", {})
         return {
             "price":          day.get("price"),
             "change_percent": day.get("change_percent"),
             "volume":         day.get("volume"),
             "avg_volume":     day.get("avg_volume"),
+            "analyst_target": lt.get("analyst_target"),
         }
     except Exception as e:
-        log(f"[ERROR] Could not fetch {ticker}: {e}")
+        log(f"[PRICE] {ticker} failed: {e}")
         return None
 
-# ── Main monitor logic ───────────────────────────────────────
+# ── Execute a paper buy ───────────────────────────────────────
+def execute_buy(ledger, ticker, price, indicators, using_margin=False):
+    if using_margin:
+        deployed = sum(p["shares"] * price for p in ledger["positions"].values())
+        avail    = ledger["equity"] * ledger["leverage"] - deployed
+        to_spend = min(MARGIN_PER_POS, max(avail, 0))
+    else:
+        to_spend = min(CASH_PER_POS, ledger["cash"])
+
+    if to_spend < 1000:
+        log(f"[TRADE] {ticker} — insufficient funds (${to_spend:.0f})")
+        return None
+
+    shares  = int(to_spend / price)
+    cost    = round(shares * price, 2)
+    stop    = round(price * 0.92, 2)
+    pd      = get_price(ticker)
+    target  = pd["analyst_target"] if pd and pd["analyst_target"] else round(price * 1.40, 2)
+
+    ledger["positions"][ticker] = {
+        "name": ticker, "entry": price, "stop": stop,
+        "target": target, "shares": shares,
+    }
+    if not using_margin:
+        ledger["cash"] = round(ledger["cash"] - cost, 2)
+
+    tr = {"date": datetime.date.today().isoformat(), "action": "BUY",
+          "ticker": ticker, "shares": shares, "price": price,
+          "cost": cost, "margin": using_margin,
+          "rsi": indicators["rsi"], "macd_h": indicators["histogram"]}
+    ledger["trades"].append(tr)
+    mode = "MARGIN" if using_margin else "CASH"
+    log(f"[TRADE] BUY {shares}x {ticker} @ ${price:.2f} = ${cost:.2f} [{mode}] RSI={indicators['rsi']}")
+    return tr
+
+# ── Execute a paper sell ──────────────────────────────────────
+def execute_sell(ledger, ticker, price, reason):
+    pos      = ledger["positions"].pop(ticker)
+    shares   = pos["shares"]
+    proceeds = round(shares * price, 2)
+    pnl      = round(proceeds - shares * pos["entry"], 2)
+    ledger["cash"] = round(ledger["cash"] + proceeds, 2)
+
+    tr = {"date": datetime.date.today().isoformat(), "action": "SELL",
+          "ticker": ticker, "shares": shares, "price": price,
+          "proceeds": proceeds, "pnl": pnl, "reason": reason}
+    ledger["trades"].append(tr)
+    log(f"[TRADE] SELL {shares}x {ticker} @ ${price:.2f} P&L=${pnl:+.2f} [{reason}]")
+    return tr
+
+# ── Dynamic leverage decision ─────────────────────────────────
+def decide_leverage(position_indicators, ledger):
+    """
+    Recalculate leverage each session based on RSI/MACD signals.
+    1.0x → all MACD negative (no margin)
+    1.25x → mixed/weak signals
+    1.5x → some MACD turning positive
+    2.0x → majority MACD positive + RSI recovering (40-55)
+    """
+    if not position_indicators:
+        return 1.0, "No signal data — holding flat"
+
+    n          = len(position_indicators)
+    pos_macd   = sum(1 for i in position_indicators.values() if i and i["histogram"] > 0)
+    avg_rsi    = sum(i["rsi"] for i in position_indicators.values() if i) / n
+    near_stop  = any(i.get("near_stop") for i in position_indicators.values() if i)
+
+    if near_stop:
+        lev, reason = 1.0, "Position near stop-loss — capital preservation"
+    elif pos_macd == 0 and avg_rsi < 40:
+        lev, reason = 1.0, f"All MACD negative + avg RSI {avg_rsi:.0f} — no margin"
+    elif pos_macd == 0:
+        lev, reason = 1.25, f"All MACD negative, RSI neutral ({avg_rsi:.0f}) — minimal margin"
+    elif pos_macd >= n // 2 and avg_rsi > 50:
+        lev, reason = 2.0, f"{pos_macd}/{n} MACD positive + RSI {avg_rsi:.0f} — high conviction"
+    elif pos_macd >= 1:
+        lev, reason = 1.5, f"{pos_macd}/{n} MACD turning positive — moderate margin"
+    else:
+        lev, reason = 1.25, f"Mixed signals (RSI {avg_rsi:.0f}) — cautious"
+
+    prev = ledger.get("leverage", 1.5)
+    if lev != prev:
+        log(f"[LEVERAGE] {prev}x → {lev}x | {reason}")
+    else:
+        log(f"[LEVERAGE] Unchanged at {lev}x | {reason}")
+    return lev, reason
+
+# ── User-friendly ntfy body ───────────────────────────────────
+def build_ntfy_body(positions_data, portfolio_value, start_value, cash, leverage, alerts, new_trades, leverage_reason, market_indicators=None):
+    pnl      = portfolio_value - start_value
+    pnl_pct  = (pnl / start_value) * 100
+    sign     = "+" if pnl >= 0 else ""
+    emoji    = "📈" if pnl >= 0 else "📉"
+    buying_pw= start_value * leverage
+
+    lines = [
+        f"{emoji} Portfolio: ${portfolio_value:,.2f} | P&L: {sign}${pnl:,.2f} ({sign}{pnl_pct:.2f}%)",
+        f"💵 Cash: ${cash:,.2f} | Leverage: {leverage}x | Buying power: ${buying_pw:,.0f}",
+        f"⚖️  Leverage reason: {leverage_reason}",
+        "",
+        "POSITIONS",
+    ]
+    for t, d in positions_data.items():
+        price    = d["price"]
+        entry    = d["entry"]
+        shares   = d["shares"]
+        value    = shares * price
+        invested = shares * entry
+        p_pnl    = value - invested
+        p_pct    = (price - entry) / entry * 100
+        day_pct  = d.get("change_percent", 0) or 0
+        dot      = "🟢" if p_pct >= 0 else ("🔴" if p_pct < -4 else "🟡")
+        lines.append(
+            f"{dot} {t}  {shares}sh × ${price:.2f} = ${value:,.0f}"
+            f"  |  P&L: {'+' if p_pnl>=0 else ''}${p_pnl:,.0f} ({'+' if p_pct>=0 else ''}{p_pct:.1f}%)"
+            f"  |  Day: {'+' if day_pct>=0 else ''}{day_pct:.1f}%"
+        )
+
+    if new_trades:
+        lines += ["", "TRADES TODAY"]
+        for tr in new_trades:
+            if tr["action"] == "BUY":
+                mode = "margin" if tr.get("margin") else "cash"
+                lines.append(f"🛒 BUY {tr['shares']}x {tr['ticker']} @ ${tr['price']:.2f} (${tr['cost']:,.0f}) [{mode}] RSI={tr['rsi']}")
+            else:
+                lines.append(f"🔴 SELL {tr['shares']}x {tr['ticker']} @ ${tr['price']:.2f} | P&L: ${tr['pnl']:+,.0f}")
+
+    if market_indicators:
+        lines += ["", "MARKET PULSE (monitor only)"]
+        for ticker, ind in market_indicators.items():
+            rsi   = ind["rsi"]
+            hist  = ind["histogram"]
+            price = ind.get("price", 0)
+            dot   = "🔴" if rsi < 35 else ("🟡" if rsi < 45 else "🟢")
+            trend = "▲" if hist > 0 else "▼"
+            lines.append(f"{dot} {ticker} ${price:.2f} | RSI={rsi:.1f} | MACD {trend}{abs(hist):.2f}")
+
+    if alerts:
+        lines += ["", "ALERTS"]
+        for title, msg, urgent in alerts:
+            lines.append(f"{'🔴' if urgent else '⚠️'} {title}: {msg}")
+
+    return "\n".join(lines)
+
+# ── Trade log email ──────────────────────────────────────────
+def _build_csv(trades):
+    """Build CSV string of all trades for email attachment."""
+    import csv
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    writer.writerow(["Date","Action","Ticker","Name","Shares","Price","Total ($)","Type","RSI","MACD Hist","P&L ($)","Note"])
+    for tr in trades:
+        cost  = tr.get("cost") or tr.get("proceeds", 0)
+        rsi   = f"{tr['rsi']:.2f}" if tr.get("rsi") is not None else ""
+        macd  = f"{tr['macd_h']:.4f}" if tr.get("macd_h") is not None else ""
+        pnl   = f"{tr['pnl']:+.2f}" if tr.get("pnl") is not None else ""
+        mtype = "Margin" if tr.get("margin") else "Cash"
+        writer.writerow([
+            tr["date"], tr["action"], tr["ticker"],
+            tr.get("name", tr["ticker"]),
+            tr["shares"], f"{tr['price']:.2f}", f"{cost:.2f}",
+            mtype, rsi, macd, pnl, tr.get("note","")
+        ])
+    return buf.getvalue()
+
+def send_trade_log(ledger, portfolio_value):
+    trades  = ledger.get("trades", [])
+    rows_html = ""
+    total_invested = 0
+    total_proceeds = 0
+
+    for tr in trades:
+        action  = tr["action"]
+        ticker  = tr["ticker"]
+        name    = tr.get("name", ticker)
+        date    = tr["date"]
+        shares  = tr["shares"]
+        price   = tr["price"]
+        cost    = tr.get("cost") or tr.get("proceeds", 0)
+        margin  = "Margin" if tr.get("margin") else "Cash"
+        rsi     = f"{tr['rsi']:.1f}" if tr.get("rsi") else "—"
+        note    = tr.get("note", "")
+        pnl     = tr.get("pnl")
+        pnl_str = f"${pnl:+,.2f}" if pnl is not None else "—"
+        bg      = "#f0fdf4" if action == "BUY" else "#fef2f2"
+        color   = "#16a34a" if action == "BUY" else "#dc2626"
+
+        if action == "BUY":
+            total_invested += cost
+        else:
+            total_proceeds += cost
+
+        rows_html += f"""
+        <tr style="background:{bg};">
+          <td style="padding:9px 12px;color:#64748b;font-size:12px;">{date}</td>
+          <td style="padding:9px 12px;font-weight:bold;color:{color};">{action}</td>
+          <td style="padding:9px 12px;font-weight:bold;">{ticker}</td>
+          <td style="padding:9px 12px;color:#475569;">{name}</td>
+          <td style="padding:9px 12px;text-align:right;">{shares}</td>
+          <td style="padding:9px 12px;text-align:right;">${price:.2f}</td>
+          <td style="padding:9px 12px;text-align:right;font-weight:bold;">${cost:,.2f}</td>
+          <td style="padding:9px 12px;text-align:center;">{margin}</td>
+          <td style="padding:9px 12px;text-align:center;">{rsi}</td>
+          <td style="padding:9px 12px;color:#64748b;font-size:11px;">{pnl_str}</td>
+          <td style="padding:9px 12px;color:#94a3b8;font-size:11px;">{note}</td>
+        </tr>"""
+
+    pnl_total = portfolio_value - ledger["start_value"]
+    pnl_color = "#16a34a" if pnl_total >= 0 else "#dc2626"
+    pnl_sign  = "+" if pnl_total >= 0 else ""
+    date_str  = datetime.datetime.now().strftime("%B %d, %Y %H:%M IDT")
+
+    html = f"""<!DOCTYPE html>
+<html><body style="font-family:Calibri,Arial,sans-serif;background:#f8fafc;padding:24px;color:#1e293b;">
+<div style="max-width:860px;margin:auto;background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,.08);">
+  <div style="background:linear-gradient(135deg,#0f172a,#1e3a5f);padding:28px 32px;">
+    <h1 style="color:#fff;margin:0;font-size:22px;">📋 Trade Log — Full History</h1>
+    <p style="color:#94a3b8;margin:6px 0 0;">Generated {date_str} &nbsp;|&nbsp; Start: $100,000.00</p>
+  </div>
+  <div style="padding:24px 32px;">
+    <div style="display:flex;gap:24px;margin-bottom:24px;flex-wrap:wrap;">
+      <div style="background:#f1f5f9;border-radius:10px;padding:16px 24px;flex:1;min-width:160px;text-align:center;">
+        <div style="font-size:12px;color:#64748b;">Portfolio Value</div>
+        <div style="font-size:26px;font-weight:bold;">${portfolio_value:,.2f}</div>
+        <div style="color:{pnl_color};font-weight:bold;">{pnl_sign}${pnl_total:,.2f} ({pnl_sign}{pnl_total/ledger['start_value']*100:.2f}%)</div>
+      </div>
+      <div style="background:#f1f5f9;border-radius:10px;padding:16px 24px;flex:1;min-width:160px;text-align:center;">
+        <div style="font-size:12px;color:#64748b;">Total Trades</div>
+        <div style="font-size:26px;font-weight:bold;">{len(trades)}</div>
+        <div style="color:#64748b;font-size:12px;">{sum(1 for t in trades if t['action']=='BUY')} buys / {sum(1 for t in trades if t['action']=='SELL')} sells</div>
+      </div>
+      <div style="background:#f1f5f9;border-radius:10px;padding:16px 24px;flex:1;min-width:160px;text-align:center;">
+        <div style="font-size:12px;color:#64748b;">Cash Remaining</div>
+        <div style="font-size:26px;font-weight:bold;">${ledger['cash']:,.2f}</div>
+        <div style="color:#64748b;font-size:12px;">Leverage: {ledger['leverage']}x</div>
+      </div>
+    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13px;">
+      <thead>
+        <tr style="background:#1e293b;color:#fff;">
+          <th style="padding:10px 12px;text-align:left;">Date</th>
+          <th style="padding:10px 12px;text-align:left;">Action</th>
+          <th style="padding:10px 12px;text-align:left;">Ticker</th>
+          <th style="padding:10px 12px;text-align:left;">Name</th>
+          <th style="padding:10px 12px;text-align:right;">Shares</th>
+          <th style="padding:10px 12px;text-align:right;">Price</th>
+          <th style="padding:10px 12px;text-align:right;">Total</th>
+          <th style="padding:10px 12px;text-align:center;">Type</th>
+          <th style="padding:10px 12px;text-align:center;">RSI</th>
+          <th style="padding:10px 12px;text-align:right;">P&amp;L</th>
+          <th style="padding:10px 12px;text-align:left;">Note</th>
+        </tr>
+      </thead>
+      <tbody>{rows_html}</tbody>
+    </table>
+  </div>
+</div>
+</body></html>"""
+
+    plain = f"Trade Log — {date_str}\nPortfolio: ${portfolio_value:,.2f} ({pnl_sign}{pnl_total/ledger['start_value']*100:.2f}%)\n\n"
+    plain += f"{'Date':<12} {'Action':<6} {'Ticker':<6} {'Shares':>6} {'Price':>8} {'Total':>10} {'RSI':>6} {'Note'}\n"
+    plain += "-" * 80 + "\n"
+    for tr in trades:
+        cost = tr.get("cost") or tr.get("proceeds", 0)
+        rsi  = f"{tr['rsi']:.1f}" if tr.get("rsi") else "  —"
+        plain += f"{tr['date']:<12} {tr['action']:<6} {tr['ticker']:<6} {tr['shares']:>6} ${tr['price']:>7.2f} ${cost:>9,.2f} {rsi:>6}  {tr.get('note','')}\n"
+
+    # Build CSV attachment
+    csv_str      = _build_csv(trades)
+    csv_b64      = base64.b64encode(csv_str.encode("utf-8")).decode("ascii")
+    filename     = f"trade_log_{datetime.date.today().isoformat()}.csv"
+    attachments  = [{"filename": filename, "content": csv_b64}]
+
+    subject = f"📋 Trade Log — {len(trades)} trades | Portfolio ${portfolio_value:,.0f} ({pnl_sign}{pnl_total/ledger['start_value']*100:.2f}%)"
+    send_email(subject, html, plain, attachments=attachments)
+    log(f"[TRADE LOG] Sent — {len(trades)} trades + CSV attachment ({filename})")
+
+# ── Main ──────────────────────────────────────────────────────
 def run():
     log("=" * 55)
-    log("SIMULATION MONITOR — Daily Check")
+    log(f"SIMULATION MONITOR — {datetime.date.today()}")
     log("=" * 55)
 
-    # Check backend is up
     try:
-        import urllib.request
         urllib.request.urlopen("http://localhost:8000/api/health", timeout=5)
     except Exception:
-        notify("⚠️ Sim Monitor", "Backend is DOWN — run simstart in terminal", urgent=True)
+        notify_macos("⚠️ Sim Monitor", "Backend is DOWN — run simstart", urgent=True)
         log("[ERROR] Backend unreachable. Exiting.")
         sys.exit(1)
 
-    portfolio_value = CASH
-    alerts = []
-    summary_lines = []
+    ledger          = load_ledger()
+    alerts          = []
+    new_trades      = []
+    positions_data  = {}
+    position_inds   = {}   # RSI/MACD per current position for leverage calc
+    portfolio_value = ledger["cash"]
 
-    for ticker, pos in POSITIONS.items():
+    # ── 1. Review current positions ───────────────────────────
+    for ticker, pos in list(ledger["positions"].items()):
         data = get_price(ticker)
         if not data or data["price"] is None:
-            log(f"[SKIP] {ticker} — no data")
+            log(f"[SKIP] {ticker} — no price data")
             continue
 
-        price        = data["price"]
-        change_pct   = data["change_percent"] or 0
-        entry        = pos["entry"]
-        stop         = pos["stop"]
-        target       = pos["target"]
-        shares       = pos["shares"]
-        name         = pos["name"]
+        price    = data["price"]
+        entry    = pos["entry"]
+        stop     = pos["stop"]
+        target   = pos["target"]
+        shares   = pos["shares"]
+        pnl_pct  = (price - entry) / entry * 100
+        day_pct  = data.get("change_percent") or 0
+        dist_stop= (price - stop) / price * 100
+        progress = (price - entry) / (target - entry) * 100 if target > entry else 0
 
-        position_value = shares * price
-        portfolio_value += position_value
-        pnl_pct = ((price - entry) / entry) * 100
-        dist_to_stop_pct = ((price - stop) / price) * 100
-        progress_to_target = (price - entry) / (target - entry) * 100
+        # Collect indicators for this position (for leverage decision)
+        ind = calc_indicators(ticker)
+        if ind:
+            ind["near_stop"] = dist_stop <= STOP_WARN_PCT * 100
+            position_inds[ticker] = ind
 
-        log(f"{ticker}  ${price:.2f}  day:{change_pct:+.2f}%  P&L:{pnl_pct:+.2f}%  dist_stop:{dist_to_stop_pct:.1f}%")
+        log(f"{ticker}  ${price:.2f}  day:{day_pct:+.2f}%  P&L:{pnl_pct:+.2f}%  stop_dist:{dist_stop:.1f}%"
+            + (f"  RSI={ind['rsi']} MACD_h={ind['histogram']}" if ind else ""))
 
-        # ── CRITICAL: Stop-loss HIT ──────────────────────────
+        # Stop-loss hit → auto-sell
         if price <= stop:
-            msg = f"{ticker} ({name}) STOP-LOSS HIT at ${price:.2f}! Entry was ${entry:.2f}. EXIT NOW."
-            alerts.append(("🔴 STOP-LOSS HIT", msg, True))
+            tr = execute_sell(ledger, ticker, price, "STOP-LOSS")
+            new_trades.append(tr)
+            alerts.append(("🔴 STOP-LOSS", f"{ticker} sold @ ${price:.2f} | P&L: ${tr['pnl']:+.2f}", True))
+            portfolio_value += tr["proceeds"]
+            continue
 
-        # ── WARNING: Approaching stop-loss ───────────────────
-        elif dist_to_stop_pct <= STOP_LOSS_WARNING_PCT * 100:
-            msg = f"{ticker} is ${price - stop:.2f} away from stop-loss (${stop:.2f}). Watch closely."
-            alerts.append(("⚠️ Stop-Loss Warning", msg, False))
+        portfolio_value += shares * price
+        positions_data[ticker] = {**pos, "price": price, "change_percent": day_pct}
 
-        # ── ALERT: Big single-day move ────────────────────────
-        if abs(change_pct) >= STRONG_MOVE_PCT * 100:
-            direction = "UP" if change_pct > 0 else "DOWN"
-            msg = f"{ticker} moved {change_pct:+.1f}% today. Run 'sim' for full analysis."
-            alerts.append((f"📈 Big Move {direction}", msg, abs(change_pct) > 8))
+        if dist_stop <= STOP_WARN_PCT * 100:
+            alerts.append(("⚠️ Stop Warning", f"{ticker} ${price-stop:.2f} from stop (${stop:.2f})", False))
+        if abs(day_pct) >= STRONG_MOVE * 100:
+            alerts.append((f"📊 Big Move {'UP' if day_pct>0 else 'DOWN'}", f"{ticker} {day_pct:+.1f}% today", abs(day_pct) > 8))
+        if progress >= 80:
+            alerts.append(("💰 Near Target", f"{ticker} {progress:.0f}% to target ${target:.0f}", False))
 
-        # ── ALERT: Near take-profit target ───────────────────
-        if progress_to_target >= TAKE_PROFIT_PCT * 100:
-            msg = f"{ticker} is {progress_to_target:.0f}% of the way to target ${target:.0f}. Consider partial take-profit."
-            alerts.append(("💰 Near Target", msg, False))
+    # ── 1b. Dynamic leverage decision ────────────────────────
+    new_leverage, lev_reason = decide_leverage(position_inds, ledger)
+    if new_leverage != ledger.get("leverage"):
+        alerts.append(("⚖️ Leverage Changed", f"{ledger.get('leverage')}x → {new_leverage}x | {lev_reason}", False))
+    ledger["leverage"] = new_leverage
 
-        summary_lines.append(
-            f"{ticker}: ${price:.2f} ({pnl_pct:+.1f}%)"
-        )
+    # ── 2. Scan watchlist for buy signals ─────────────────────
+    slots = MAX_POSITIONS - len(ledger["positions"])
+    if slots > 0:
+        log(f"Scanning watchlist — {slots} slot(s) open")
+        for ticker in WATCHLIST:
+            if ticker in AVOID or ticker in ledger["positions"]:
+                continue
+            if len(ledger["positions"]) >= MAX_POSITIONS:
+                break
 
-    # ── Portfolio summary notification ────────────────────────
-    total_pnl = portfolio_value - START_VALUE
-    total_pnl_pct = (total_pnl / START_VALUE) * 100
+            ind = calc_indicators(ticker)
+            if ind is None:
+                continue
+            log(f"  {ticker}: RSI={ind['rsi']} MACD_hist={ind['histogram']}")
+
+            if ind["rsi"] < 30:
+                pd = get_price(ticker)
+                if not pd or not pd["price"]:
+                    continue
+                price = pd["price"]
+                # Double-confirm (RSI<30 + MACD hist>0) → margin buy regardless of
+                # portfolio leverage setting. Single confirm → cash only.
+                double_confirm = ind["histogram"] > 0
+                use_margin     = double_confirm and ledger["cash"] < CASH_PER_POS
+                if use_margin:
+                    # Temporarily floor leverage at 1.5x for this confirmed opportunity
+                    orig_leverage       = ledger["leverage"]
+                    ledger["leverage"]  = max(ledger["leverage"], 1.5)
+                tr = execute_buy(ledger, ticker, price, ind, using_margin=use_margin)
+                if use_margin:
+                    ledger["leverage"] = orig_leverage  # restore after buy
+                if tr:
+                    new_trades.append(tr)
+                    mode = "MARGIN" if use_margin else "CASH"
+                    alerts.append(("🛒 Auto-Buy", f"{tr['shares']}x {ticker} @ ${price:.2f} [{mode}] RSI={ind['rsi']}", False))
+                    positions_data[ticker] = {
+                        "name": ticker, "price": price, "entry": price,
+                        "shares": tr["shares"],
+                        "stop": ledger["positions"][ticker]["stop"],
+                        "target": ledger["positions"][ticker]["target"],
+                        "change_percent": pd.get("change_percent", 0),
+                    }
+
+    # ── 3. Market-wide indicators (monitor only — no auto-buy) ──
+    market_indicators = {}
+    for ticker in MONITOR_ONLY:
+        ind = calc_indicators(ticker)
+        pd  = get_price(ticker)
+        if ind and pd:
+            market_indicators[ticker] = {**ind, "price": pd["price"]}
+            rsi_warn = ind["rsi"] < 38
+            log(f"  {ticker}: ${pd['price']:.2f}  RSI={ind['rsi']}  MACD_h={ind['histogram']}"
+                + ("  ⚠️ OVERSOLD" if ind["rsi"] < 35 else ""))
+            if ind["rsi"] < 35:
+                alerts.append(("📉 Market Oversold", f"{ticker} RSI={ind['rsi']} — broad market weakness, positions may follow", False))
+
+    # ── 4. Save ledger ────────────────────────────────────────
+    save_ledger(ledger)
+
+    # ── 4. Summary — recalculate from ledger state ────────────
+    portfolio_value = ledger["cash"] + sum(
+        pos["shares"] * positions_data.get(t, {}).get("price", pos["entry"])
+        for t, pos in ledger["positions"].items()
+    )
+    total_pnl     = portfolio_value - ledger["start_value"]
+    total_pnl_pct = (total_pnl / ledger["start_value"]) * 100
     log(f"Portfolio: ${portfolio_value:,.2f}  P&L: {total_pnl_pct:+.2f}%")
 
-    # ── Build positions data dict for reports ─────────────────
-    positions_data = {}
-    for ticker, pos in POSITIONS.items():
-        d = get_price(ticker)
-        if d and d["price"]:
-            positions_data[ticker] = {
-                "name":           pos["name"],
-                "price":          d["price"],
-                "entry":          pos["entry"],
-                "stop":           pos["stop"],
-                "target":         pos["target"],
-                "change_percent": d["change_percent"],
-            }
+    # ── 5. Notifications ──────────────────────────────────────
+    urgent = any(u for _, _, u in alerts)
+    if urgent:
+        notify_macos("🔴 Sim Alert", alerts[0][1], urgent=True)
+    else:
+        notify_macos("📊 Sim Update", f"${portfolio_value:,.0f} ({total_pnl_pct:+.2f}%)")
 
-    # ── macOS notification (urgent alerts) ────────────────────
-    for title, msg, urgent in alerts:
-        notify_macos(title, msg, urgent=urgent)
-
-    if not alerts:
-        notify_macos("📊 Sim Daily Update",
-            f"Portfolio: ${portfolio_value:,.2f} ({total_pnl_pct:+.1f}%)")
-
-    # ── Email report ──────────────────────────────────────────
-    subject = f"📊 Tech Sim Report — ${portfolio_value:,.0f} ({total_pnl_pct:+.1f}%) — {datetime.date.today()}"
-    html, plain = build_email_report(positions_data, portfolio_value, START_VALUE, alerts)
+    subject    = f"📊 Tech Sim — ${portfolio_value:,.0f} ({'+' if total_pnl_pct>=0 else ''}{total_pnl_pct:.2f}%) — {datetime.date.today()}"
+    html, plain = build_email_report(positions_data, portfolio_value, ledger["start_value"], alerts)
     send_email(subject, html, plain)
 
-    # ── WhatsApp summary ──────────────────────────────────────
-    wa_msg = build_whatsapp_summary(positions_data, portfolio_value, START_VALUE, alerts)
-    send_whatsapp(wa_msg)
+    ntfy_body  = build_ntfy_body(positions_data, portfolio_value, ledger["start_value"],
+                               ledger["cash"], ledger["leverage"], alerts, new_trades, lev_reason,
+                               market_indicators=market_indicators)
+    now_str    = datetime.datetime.now().strftime("%b %d %Y %H:%M IDT")
+    ntfy_title = f"📊 Close Report | {now_str} | ${portfolio_value:,.0f}"
+    ntfy_tag   = "chart_with_upwards_trend" if total_pnl_pct >= 0 else "chart_with_downwards_trend"
+    send_ntfy(ntfy_title, ntfy_body, priority="urgent" if urgent else "default", tags=ntfy_tag)
 
-    # ── ntfy.sh push notification ─────────────────────────────
-    pnl_sign  = "+" if total_pnl_pct >= 0 else ""
-    ntfy_icon = "chart_with_upwards_trend" if total_pnl_pct >= 0 else "chart_with_downwards_trend"
-    ntfy_pri  = "urgent" if any(u for _, _, u in alerts) else "default"
-    ntfy_title = f"Tech Sim — ${portfolio_value:,.0f} ({pnl_sign}{total_pnl_pct:.2f}%)"
-    ntfy_body  = "\n".join(
-        f"{t}: ${d['price']:.2f}  P&L: {((d['price']-d['entry'])/d['entry']*100):+.1f}%  Day: {d.get('change_percent',0):+.1f}%"
-        for t, d in positions_data.items()
-    )
-    if alerts:
-        ntfy_body += "\n\n⚠️ ALERTS:\n" + "\n".join(f"{a[0]}: {a[1]}" for a in alerts)
-    send_ntfy(ntfy_title, ntfy_body, priority=ntfy_pri, tags=ntfy_icon)
+    # ── Trade log — email only (not ntfy) ─────────────────────
+    send_trade_log(ledger, portfolio_value)
 
     log("Monitor run complete.")
-    return portfolio_value
 
 if __name__ == "__main__":
     run()
