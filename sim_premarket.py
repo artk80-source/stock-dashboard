@@ -14,6 +14,10 @@ import urllib.request
 
 sys.path.insert(0, os.path.dirname(__file__))
 from sim_notify import send_ntfy, send_email, notify_macos
+try:
+    from sim_daytrader import get_day_summary as _get_day_summary
+except Exception:
+    _get_day_summary = None
 
 LEDGER_PATH = os.path.join(os.path.dirname(__file__), "sim_ledger.json")
 AVOID       = {
@@ -194,17 +198,25 @@ def run():
         lines.append("")
         lines.append("✅ All clear — no critical pre-market alerts")
 
+    # ── Day trade section (overnight positions + today's candidates) ─
+    day_ntfy, day_html, day_plain = [], "", ""
+    if _get_day_summary:
+        try:
+            day_ntfy, day_html, day_plain = _get_day_summary()
+        except Exception:
+            pass
+
     # ── Send ntfy ─────────────────────────────────────────────
     ntfy_title = f"🌅 Pre-Market | {date_str} {now_str}"
-    ntfy_body  = "\n".join(lines)
+    ntfy_body  = "\n".join(lines) + "\n" + "\n".join(day_ntfy)
     priority   = "urgent" if urgent else "default"
     tags       = "sunrise" if not urgent else "warning"
     send_ntfy(ntfy_title, ntfy_body, priority=priority, tags=tags)
 
     # ── Send email ────────────────────────────────────────────
     subject    = f"🌅 Pre-Market Briefing — {date_str} {now_str}"
-    plain_body = ntfy_body
-    html_body  = _build_premarket_html(lines, alerts, date_str, now_str, urgent)
+    plain_body = ntfy_body + "\n" + day_plain
+    html_body  = _build_premarket_html(lines, alerts, date_str, now_str, urgent) + day_html
     send_email(subject, html_body, plain_body)
 
     # ── macOS notification ────────────────────────────────────

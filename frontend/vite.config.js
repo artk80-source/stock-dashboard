@@ -5,6 +5,6 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 5173,
-    host: 'localhost'
+    host: true   // exposes on 0.0.0.0 → accessible from phone on same WiFi
   }
 })

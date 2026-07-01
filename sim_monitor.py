@@ -17,6 +17,10 @@ import io
 
 sys.path.insert(0, os.path.dirname(__file__))
 from sim_notify import notify_macos, send_email, send_ntfy, build_email_report
+try:
+    from sim_daytrader import get_day_summary as _get_day_summary
+except Exception:
+    _get_day_summary = None
 
 LEDGER_PATH   = os.path.join(os.path.dirname(__file__), "sim_ledger.json")
 CONFIG_PATH   = os.path.join(os.path.dirname(__file__), ".sim_config")
@@ -693,6 +697,7 @@ def run():
     positions_data  = {}
     position_inds   = {}   # RSI/MACD per current position for leverage calc
     portfolio_value = ledger["cash"]
+    market_indicators = {}  # filled later in step 3 (SPY/QQQ scan)
 
     # ── 1. Review current positions ───────────────────────────
     for ticker, pos in list(ledger["positions"].items()):
@@ -745,7 +750,7 @@ def run():
     ledger["leverage"] = new_leverage
 
     # ── 2. Scan watchlist for buy signals ─────────────────────
-    # Current SPY RSI for regime tagging on buys
+    # Current SPY RSI for regime tagging on buys (market_indicators initialized at top of run())
     spy_rsi_now = market_indicators.get("SPY", {}).get("rsi")
     th          = get_thresholds(ledger)   # adaptive thresholds from learning
 
@@ -826,15 +831,25 @@ def run():
     # Build learning summary
     learn_ntfy, learn_html = build_learning_summary(ledger)
 
+    # ── Day trade section (combined report) ───────────────────────
+    day_ntfy, day_html, day_plain = [], "", ""
+    if _get_day_summary:
+        try:
+            day_ntfy, day_html, day_plain = _get_day_summary()
+        except Exception as e:
+            log(f"[DAY SUMMARY] Failed: {e}")
+
     subject    = f"📊 Tech Sim — ${portfolio_value:,.0f} ({'+' if total_pnl_pct>=0 else ''}{total_pnl_pct:.2f}%) — {datetime.date.today()}"
     html, plain = build_email_report(positions_data, portfolio_value, ledger["start_value"], alerts)
-    html  += learn_html   # append learning block to email HTML
-    plain += "\n" + "\n".join(learn_ntfy)
+    html  += day_html       # day trade section
+    html  += learn_html     # swing learning block
+    plain += "\n" + day_plain + "\n" + "\n".join(learn_ntfy)
     send_email(subject, html, plain)
 
     ntfy_body  = build_ntfy_body(positions_data, portfolio_value, ledger["start_value"],
                                ledger["cash"], ledger["leverage"], alerts, new_trades, lev_reason,
                                market_indicators=market_indicators)
+    ntfy_body += "\n" + "\n".join(day_ntfy)
     ntfy_body += "\n" + "\n".join(learn_ntfy)
     now_str    = datetime.datetime.now().strftime("%b %d %Y %H:%M IDT")
     ntfy_title = f"📊 Close Report | {now_str} | ${portfolio_value:,.0f}"

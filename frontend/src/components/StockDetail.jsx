@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { API_BASE_URL } from '../api';
 import axios from 'axios';
 import { Line } from 'react-chartjs-2';
 import {
@@ -74,7 +75,7 @@ const StockDetail = ({ symbol, onClose }) => {
 
         // Fetch historical price data
         const historyResponse = await axios.get(
-          `http://localhost:8000/api/stock/${symbol}/history`,
+          `${API_BASE_URL}/stock/${symbol}/history`,
           {
             params: { period: periodToDays[period] },
           }
@@ -82,12 +83,12 @@ const StockDetail = ({ symbol, onClose }) => {
 
         // Fetch analysis (day trade + long term metrics)
         const analysisResponse = await axios.get(
-          `http://localhost:8000/api/stock/${symbol}/analysis`
+          `${API_BASE_URL}/stock/${symbol}/analysis`
         );
 
         // Fetch news
         const newsResponse = await axios.get(
-          `http://localhost:8000/api/stock/${symbol}/news`,
+          `${API_BASE_URL}/stock/${symbol}/news`,
           {
             params: { include_sentiment: true },
           }

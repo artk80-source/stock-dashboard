@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { API_BASE_URL } from '../api';
 import { Line } from 'react-chartjs-2'
 import {
   Chart as ChartJS,
@@ -42,9 +43,9 @@ function StockCard({ stock, onRemove }) {
   const fetchStockData = async () => {
     try {
       const [stockRes, analysisRes, newsRes] = await Promise.all([
-        fetch(`http://localhost:8000/api/stock/${stock.ticker}`),
-        fetch(`http://localhost:8000/api/stock/${stock.ticker}/analysis`),
-        fetch(`http://localhost:8000/api/stock/${stock.ticker}/news`)
+        fetch(`${API_BASE_URL}/stock/${stock.ticker}`),
+        fetch(`${API_BASE_URL}/stock/${stock.ticker}/analysis`),
+        fetch(`${API_BASE_URL}/stock/${stock.ticker}/news`)
       ])
 
       const stockInfo = await stockRes.json()
@@ -63,7 +64,7 @@ function StockCard({ stock, onRemove }) {
 
   const fetchHistory = async () => {
     try {
-      const res = await fetch(`http://localhost:8000/api/stock/${stock.ticker}/history?period=${period}`)
+      const res = await fetch(`${API_BASE_URL}/stock/${stock.ticker}/history?period=${period}`)
       const data = await res.json()
       setStockData(prev => ({
         ...prev,

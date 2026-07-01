@@ -1,0 +1,9 @@
+{
+  "rules": {
+    "correct_rolling": 0,
+    "total_rolling": 1,
+    "correct_all": 0,
+    "total_all": 1,
+    "pnl_when_correct": 0.0
+  }
+}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../api';
 import axios from 'axios';
 import CatalystCard from './CatalystCard';
 import '../styles/theme.css';
@@ -40,7 +41,7 @@ const CatalystFeed = ({ onViewDetails, onTrackStock }) => {
   // Fetch catalysts from backend
   const fetchCatalysts = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/catalysts', {
+      const response = await axios.get(API_BASE_URL + '/catalysts', {
         params: {
           lookback_hours: 24,
           min_sentiment: 0.3,

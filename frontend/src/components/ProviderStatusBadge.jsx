@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../api';
 import axios from 'axios';
 import '../styles/theme.css';
 
@@ -15,7 +16,7 @@ const ProviderStatusBadge = () => {
     // Fetch health status initially
     const checkHealth = async () => {
       try {
-        const response = await axios.get('http://localhost:8000/api/health');
+        const response = await axios.get(API_BASE_URL + '/health');
         if (response.data?.provider_status) {
           const status = response.data.provider_status;
           // Only show badge if any provider is not "ok"

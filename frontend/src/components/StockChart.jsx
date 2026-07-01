@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { API_BASE_URL } from '../api';
 import axios from 'axios'
 import { Line } from 'react-chartjs-2'
 import {
@@ -23,7 +24,7 @@ ChartJS.register(
   Legend
 )
 
-const API_BASE_URL = 'http://localhost:8000/api'
+const API_BASE_URL = API_BASE_URL
 
 function StockChart({ symbol }) {
   const [data, setData] = useState(null)

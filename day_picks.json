@@ -1,0 +1,251 @@
+{
+  "date": "2026-07-01",
+  "mode": "premarket",
+  "scanned": 52,
+  "selected_at": "2026-07-01T16:08:24.006339",
+  "tv_confirmed": false,
+  "picks": [
+    {
+      "ticker": "AMZN",
+      "score": 6,
+      "price": 239.65,
+      "rsi": 45.5,
+      "macd_hist": -0.1473,
+      "gap_pct": 0.55,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 50917991,
+      "reasons": [
+        "RSI 45.5 \u2713",
+        "MACD hist -0.147 (near zero)",
+        "Gap +0.6% \u2191",
+        "Vol 50M/day (mega liquid)"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "ZS",
+      "score": 6,
+      "price": 143.02,
+      "rsi": 55.2,
+      "macd_hist": 1.7728,
+      "gap_pct": 1.32,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 4705350,
+      "reasons": [
+        "RSI 55.2 \u2713",
+        "MACD hist +1.773 \u2191",
+        "Gap +1.3% \u2191"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "NET",
+      "score": 6,
+      "price": 250.0,
+      "rsi": 58.1,
+      "macd_hist": 0.2656,
+      "gap_pct": 1.92,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 4473736,
+      "reasons": [
+        "RSI 58.1 \u2713",
+        "MACD hist +0.266 \u2191",
+        "Gap +1.9% \u2191"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "UBER",
+      "score": 6,
+      "price": 72.65,
+      "rsi": 49.5,
+      "macd_hist": 0.4551,
+      "gap_pct": 0.68,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 19524150,
+      "reasons": [
+        "RSI 49.5 \u2713",
+        "MACD hist +0.455 \u2191",
+        "Gap +0.7% \u2191"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    }
+  ],
+  "all_candidates": [
+    {
+      "ticker": "AMZN",
+      "score": 6,
+      "price": 239.65,
+      "rsi": 45.5,
+      "macd_hist": -0.1473,
+      "gap_pct": 0.55,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 50917991,
+      "reasons": [
+        "RSI 45.5 \u2713",
+        "MACD hist -0.147 (near zero)",
+        "Gap +0.6% \u2191",
+        "Vol 50M/day (mega liquid)"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "ZS",
+      "score": 6,
+      "price": 143.02,
+      "rsi": 55.2,
+      "macd_hist": 1.7728,
+      "gap_pct": 1.32,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 4705350,
+      "reasons": [
+        "RSI 55.2 \u2713",
+        "MACD hist +1.773 \u2191",
+        "Gap +1.3% \u2191"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "NET",
+      "score": 6,
+      "price": 250.0,
+      "rsi": 58.1,
+      "macd_hist": 0.2656,
+      "gap_pct": 1.92,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 4473736,
+      "reasons": [
+        "RSI 58.1 \u2713",
+        "MACD hist +0.266 \u2191",
+        "Gap +1.9% \u2191"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "UBER",
+      "score": 6,
+      "price": 72.65,
+      "rsi": 49.5,
+      "macd_hist": 0.4551,
+      "gap_pct": 0.68,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 19524150,
+      "reasons": [
+        "RSI 49.5 \u2713",
+        "MACD hist +0.455 \u2191",
+        "Gap +0.7% \u2191"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "TTD",
+      "score": 6,
+      "price": 18.27,
+      "rsi": 40.3,
+      "macd_hist": 0.0173,
+      "gap_pct": 1.05,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 20233073,
+      "reasons": [
+        "RSI 40.3 \u2713",
+        "MACD hist +0.017 \u2191",
+        "Gap +1.1% \u2191"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "PYPL",
+      "score": 6,
+      "price": 43.55,
+      "rsi": 49.8,
+      "macd_hist": 0.3722,
+      "gap_pct": 0.86,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 15284825,
+      "reasons": [
+        "RSI 49.8 \u2713",
+        "MACD hist +0.372 \u2191",
+        "Gap +0.9% \u2191"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "AAPL",
+      "score": 5,
+      "price": 292.73,
+      "rsi": 47.0,
+      "macd_hist": -2.1971,
+      "gap_pct": 1.16,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 53643163,
+      "reasons": [
+        "RSI 47.0 \u2713",
+        "Gap +1.2% \u2191",
+        "Vol 53M/day (mega liquid)"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "TSLA",
+      "score": 5,
+      "price": 419.2,
+      "rsi": 57.1,
+      "macd_hist": 0.7284,
+      "gap_pct": -0.33,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 55468991,
+      "reasons": [
+        "RSI 57.1 \u2713",
+        "MACD hist +0.728 \u2191",
+        "Vol 55M/day (mega liquid)"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "INTU",
+      "score": 5,
+      "price": 268.0,
+      "rsi": 34.7,
+      "macd_hist": 1.859,
+      "gap_pct": 2.68,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 5025933,
+      "reasons": [
+        "RSI 34.7 (oversold)",
+        "MACD hist +1.859 \u2191",
+        "Gap +2.7% \u2191"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    },
+    {
+      "ticker": "PLTR",
+      "score": 5,
+      "price": 120.39,
+      "rsi": 38.8,
+      "macd_hist": -1.5093,
+      "gap_pct": 3.19,
+      "pre_vol_ratio": 0.0,
+      "avg_daily_vol": 45426655,
+      "reasons": [
+        "RSI 38.8 \u2713",
+        "Gap +3.2% \u2191",
+        "Vol 45M/day (mega liquid)"
+      ],
+      "confirmed": false,
+      "tv_note": ""
+    }
+  ]
+}

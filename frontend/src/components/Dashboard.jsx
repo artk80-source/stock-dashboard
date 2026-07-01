@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { API_BASE_URL } from '../api';
 import axios from 'axios';
 import '../styles/theme.css';
 
-const API_BASE_URL = 'http://localhost:8000/api';
 
 const avatarColorMap = {
   MU: 'teal',

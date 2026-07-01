@@ -5,6 +5,8 @@ Fetches financial data from Yahoo Finance using yfinance 1.2.0+
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from typing import Optional, List
 import yfinance as yf
@@ -13,6 +15,11 @@ import time
 import logging
 import csv
 import os
+import json
+from pathlib import Path
+
+# Ledger files live one level up (project root)
+_ROOT = Path(__file__).parent.parent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -41,8 +48,8 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:5174"],
-    allow_credentials=True,
+    allow_origins=["*"],   # allows mobile on local network
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -418,6 +425,157 @@ def search_stocks(query: str):
         }
     except Exception as e:
         return {"error": str(e)}, 400
+
+# ── Portfolio & Council endpoints ─────────────────────────────────────────────
+
+def _read_json(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text()) if path.exists() else {}
+    except Exception:
+        return {}
+
+def _live_price(sym: str) -> float:
+    try:
+        return float(yf.Ticker(sym).history(period="1d", interval="5m")["Close"].iloc[-1])
+    except Exception:
+        return 0.0
+
+def _enrich_positions(positions: dict) -> list:
+    rows = []
+    for sym, p in positions.items():
+        entry  = p.get("entry", 0)
+        shares = p.get("shares", 0)
+        price  = _live_price(sym) or entry
+        cost   = entry * shares
+        value  = price * shares
+        pnl    = round(value - cost, 2)
+        pnl_pct = round((pnl / cost * 100) if cost else 0, 2)
+        rows.append({
+            "sym": sym,
+            "shares": shares,
+            "entry": round(entry, 2),
+            "price": round(price, 2),
+            "cost": round(cost, 2),
+            "value": round(value, 2),
+            "pnl": pnl,
+            "pnl_pct": pnl_pct,
+            "stop": round(p.get("stop", 0), 2),
+            "target": round(p.get("target", 0), 2),
+            "strategy": p.get("strategy", ""),
+        })
+    return sorted(rows, key=lambda r: abs(r["pnl"]), reverse=True)
+
+@app.get("/api/portfolio/day")
+def portfolio_day():
+    ledger = _read_json(_ROOT / "day_ledger.json")
+    if not ledger:
+        return {"error": "day_ledger.json not found"}
+    positions = _enrich_positions(ledger.get("open_positions", {}))
+    open_value = sum(r["value"] for r in positions)
+    cash = ledger.get("cash", 0)
+    equity = round(open_value + cash, 2)
+    start = 25000
+    today = datetime.utcnow().strftime("%Y-%m-%d")
+    trades = ledger.get("trades", [])
+    today_trades = [t for t in trades if t.get("date") == today and t.get("action") == "SELL"]
+    today_pnl = round(sum(t.get("pnl", 0) for t in today_trades), 2)
+    all_closed = [t for t in trades if t.get("action") == "SELL"]
+    return {
+        "strategy": "Day Trade",
+        "start": start,
+        "equity": equity,
+        "cash": round(cash, 2),
+        "open_value": round(open_value, 2),
+        "total_pnl": round(equity - start, 2),
+        "total_pnl_pct": round((equity - start) / start * 100, 2),
+        "today_pnl": today_pnl,
+        "today_trades": len(today_trades),
+        "total_trades": len(all_closed),
+        "positions": positions,
+        "recent_trades": sorted(all_closed, key=lambda t: t.get("date",""), reverse=True)[:10],
+    }
+
+@app.get("/api/portfolio/swing")
+def portfolio_swing():
+    ledger = _read_json(_ROOT / "sim_ledger.json")
+    if not ledger:
+        return {"error": "sim_ledger.json not found"}
+    positions = _enrich_positions(ledger.get("positions", {}))
+    open_value = sum(r["value"] for r in positions)
+    cash = ledger.get("cash", 0)
+    equity = round(open_value + cash, 2)
+    # update equity in ledger
+    try:
+        ledger["equity"] = equity
+        (_ROOT / "sim_ledger.json").write_text(json.dumps(ledger, indent=2))
+    except Exception:
+        pass
+    start = 100000
+    all_closed = [t for t in ledger.get("trades", []) if t.get("action") == "SELL"]
+    return {
+        "strategy": "Swing / Long",
+        "start": start,
+        "equity": equity,
+        "cash": round(cash, 2),
+        "open_value": round(open_value, 2),
+        "total_pnl": round(equity - start, 2),
+        "total_pnl_pct": round((equity - start) / start * 100, 2),
+        "today_pnl": 0,
+        "today_trades": 0,
+        "total_trades": len(all_closed),
+        "positions": positions,
+        "recent_trades": sorted(all_closed, key=lambda t: t.get("date",""), reverse=True)[:10],
+    }
+
+@app.get("/api/council/scores")
+def council_scores():
+    scores = _read_json(_ROOT / "llm_scores.json")
+    rows = []
+    for judge, rec in scores.items():
+        total   = rec.get("total_rolling", 0)
+        correct = rec.get("correct_rolling", 0)
+        rows.append({
+            "judge": judge,
+            "accuracy": round(correct / total * 100, 1) if total else 0,
+            "total": total,
+            "correct": correct,
+            "total_all": rec.get("total_all", 0),
+            "pnl_when_correct": round(rec.get("pnl_when_correct", 0), 2),
+        })
+    rows.sort(key=lambda r: r["accuracy"], reverse=True)
+    return {"judges": rows}
+
+@app.get("/api/council/log")
+def council_log(limit: int = 20):
+    path = _ROOT / "llm_council_log.jsonl"
+    if not path.exists():
+        return {"decisions": []}
+    lines = path.read_text().splitlines()
+    decisions = []
+    for line in reversed(lines):
+        try:
+            obj = json.loads(line)
+            decisions.append(obj)
+            if len(decisions) >= limit:
+                break
+        except Exception:
+            continue
+    return {"decisions": decisions}
+
+
+# ── Serve built React app (production / tunnel mode) ──────────────────────────
+_DIST = Path(__file__).parent.parent / "frontend" / "dist"
+if _DIST.exists():
+    app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
+
+    @app.get("/", include_in_schema=False)
+    @app.get("/{full_path:path}", include_in_schema=False)
+    def serve_spa(full_path: str = ""):
+        # API routes are already handled above; anything else → index.html
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404)
+        return FileResponse(_DIST / "index.html")
+
 
 if __name__ == "__main__":
     import uvicorn

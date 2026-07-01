@@ -37,7 +37,7 @@
     }
   },
   "cash": 60.42,
-  "equity": 100000.0,
+  "equity": 104072.72,
   "leverage": 1.0,
   "start_value": 100000.0,
   "trades": [
@@ -125,13 +125,33 @@
       "stop_loss_count": 0,
       "target_count": 0,
       "by_signal": {
-        "rsi_only":       {"count": 0, "wins": 0, "total_gain": 0.0},
-        "double_confirm": {"count": 0, "wins": 0, "total_gain": 0.0}
+        "rsi_only": {
+          "count": 0,
+          "wins": 0,
+          "total_gain": 0.0
+        },
+        "double_confirm": {
+          "count": 0,
+          "wins": 0,
+          "total_gain": 0.0
+        }
       },
       "by_regime": {
-        "bear":    {"count": 0, "wins": 0, "total_gain": 0.0},
-        "neutral": {"count": 0, "wins": 0, "total_gain": 0.0},
-        "bull":    {"count": 0, "wins": 0, "total_gain": 0.0}
+        "bear": {
+          "count": 0,
+          "wins": 0,
+          "total_gain": 0.0
+        },
+        "neutral": {
+          "count": 0,
+          "wins": 0,
+          "total_gain": 0.0
+        },
+        "bull": {
+          "count": 0,
+          "wins": 0,
+          "total_gain": 0.0
+        }
       }
     },
     "adjustments": [],
